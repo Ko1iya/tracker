@@ -27,7 +27,8 @@
   - [x] Накатить первую миграцию (`npx prisma migrate dev --name init`).
 - [x] **Базовый API для транзакций**
   - [x] Создать `PrismaService` для работы с БД из кода NestJS.
-  - [x] Сгенерировать REST API ресурс для транзакций (`nest g resource transactions`). -[x] Создать тестового пользователя через `npx prisma studio`.
+  - [x] Сгенерировать REST API ресурс для транзакций (`nest g resource transactions`).
+  - [x] Создать тестового пользователя через `npx prisma studio`.
   - [x] Написать DTO (`CreateTransactionDto`) для валидации входящих данных.
   - [x] Реализовать метод `create` в сервисе (сохранение в БД).
   - [ ] Проверить `POST /transactions` запрос (через cURL/Postman).
