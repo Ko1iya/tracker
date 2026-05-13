@@ -15,10 +15,12 @@ budget-api/
 │   └──  schema.prisma           # Prisma schema: модели User, Category, Transaction
 └── src/
     ├── main.ts                 # Точка входа: bootstrap NestJS приложения
-    ├── app.module.ts           # Корневой module: регистрирует AppController, AppService, PrismaService, TransactionsModule
+    ├── app.module.ts           # Корневой module: импортирует PrismaModule и TransactionsModule, регистрирует AppController/AppService
     ├── app.controller.ts       # Базовый controller — GET / возвращает приветствие
     ├── app.service.ts          # Возвращает строку 'Hello World!!' (placeholder)
-    ├── prisma.service.ts       # Wrapper над PrismaClient: connect/disconnect на lifecycle hooks
+    ├── prisma/
+    │   ├── prisma.module.ts    # NestJS module: провайдит и экспортирует PrismaService для других модулей
+    │   └── prisma.service.ts   # Wrapper над PrismaClient: connect/disconnect на lifecycle hooks
     └── transactions/
         ├── transactions.module.ts                  # NestJS module для домена транзакций
         ├── transactions.controller.ts              # REST endpoints (POST/GET/PATCH/DELETE /transactions)
@@ -49,14 +51,18 @@ budget-api/
 #### `src/`
 
 - **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)` и слушает `process.env.PORT ?? 3000`.
-- **`app.module.ts`** — корневой `@Module`. Импортирует `TransactionsModule`, регистрирует `AppController`, провайдит `AppService` и `PrismaService`.
+- **`app.module.ts`** — корневой `@Module`. Импортирует `PrismaModule` и `TransactionsModule`, регистрирует `AppController`, провайдит `AppService`.
 - **`app.controller.ts`** — `AppController` без префикса. Один endpoint `GET /` → `appService.getHello()`.
 - **`app.service.ts`** — `AppService.getHello()` возвращает строку `'Hello World!!'`. Placeholder из стартового шаблона NestJS.
+
+#### `src/prisma/`
+
+- **`prisma.module.ts`** — `PrismaModule`. Провайдит `PrismaService` и **экспортирует** его, чтобы любой модуль, импортирующий `PrismaModule`, получал общий инстанс (один `PrismaClient` на всё приложение).
 - **`prisma.service.ts`** — `PrismaService extends PrismaClient`. Реализует `OnModuleInit` (`$connect`) и `OnModuleDestroy` (`$disconnect`) — открывает/закрывает соединение с БД на старте/остановке приложения. **Внешняя интеграция:** Prisma Client → PostgreSQL.
 
 #### `src/transactions/`
 
-- **`transactions.module.ts`** — `TransactionsModule`. Регистрирует `TransactionsController` и `TransactionsService`.
+- **`transactions.module.ts`** — `TransactionsModule`. Импортирует `PrismaModule`, регистрирует `TransactionsController` и `TransactionsService`.
 - **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Пять методов: `create` (POST), `findAll` (GET), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Все делегируют в `TransactionsService`.
 - **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Реализованы: `create` (запись в БД через `prisma.transaction.create` со связыванием `user.connect`), `findAll` (`prisma.transaction.findMany`). Методы `findOne`, `update`, `remove` — пока заглушки, возвращают строки. **Внешняя интеграция:** Prisma Client.
 - **`dto/create-transaction.dto.ts`** — `CreateTransactionDto`. Поля: `amount: number`, `description: string`, `type: 'INCOME' | 'EXPENSE'`, `userId: number`. Валидация (class-validator) пока не подключена.
