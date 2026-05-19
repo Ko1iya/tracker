@@ -63,8 +63,8 @@ budget-api/
 #### `src/transactions/`
 
 - **`transactions.module.ts`** — `TransactionsModule`. Импортирует `PrismaModule`, регистрирует `TransactionsController` и `TransactionsService`.
-- **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Пять методов: `create` (POST), `findAll` (GET), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Все делегируют в `TransactionsService`.
-- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Реализованы: `create` (запись в БД через `prisma.transaction.create` со связыванием `user.connect`), `findAll` (`prisma.transaction.findMany`). Методы `findOne`, `update`, `remove` — пока заглушки, возвращают строки. **Внешняя интеграция:** Prisma Client.
+- **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Пять методов: `create` (POST), `findAll` (GET, с query `limit`/`offset` через `ParseIntPipe({ optional: true })`), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Параметр `:id` валидируется `ParseIntPipe`. Все методы делегируют в `TransactionsService`.
+- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Реализованы: `create` (`prisma.transaction.create` со связыванием `user.connect`), `findAll(limit?, offset?)` (`prisma.transaction.findMany` с `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `remove(id)` (`prisma.transaction.delete`, ошибку Prisma `P2025` превращает в `NotFoundException`). Методы `findOne`, `update` — пока заглушки, возвращают строки. **Внешняя интеграция:** Prisma Client.
 - **`dto/create-transaction.dto.ts`** — `CreateTransactionDto`. Поля: `amount: number`, `description: string`, `type: 'INCOME' | 'EXPENSE'`, `userId: number`. Валидация (class-validator) пока не подключена.
 - **`dto/update-transaction.dto.ts`** — `UpdateTransactionDto extends PartialType(CreateTransactionDto)`. Все поля опциональны (через `@nestjs/mapped-types`).
 - **`entities/transaction.entity.ts`** — `class Transaction {}`. Пустая заглушка от `nest g resource`, не используется (модель транзакции описана в `schema.prisma`).
@@ -79,7 +79,7 @@ budget-api/
 | ------ | ------------------- | ----------------------------------------------- | ---------------------------- | ----------------- |
 | GET    | `/`                 | Возвращает строку-приветствие (`Hello World!!`) | `app.controller.ts`          | реализован        |
 | POST   | `/transactions`     | Создать транзакцию по `CreateTransactionDto`    | `transactions.controller.ts` | реализован        |
-| GET    | `/transactions`     | Получить все транзакции (без пагинации)         | `transactions.controller.ts` | реализован        |
+| GET    | `/transactions`     | Список транзакций, сортировка по `date` DESC. Query: `limit` (default 50, max 100), `offset` (default 0) | `transactions.controller.ts` | реализован        |
 | GET    | `/transactions/:id` | Получить транзакцию по id                       | `transactions.controller.ts` | заглушка (строка) |
 | PATCH  | `/transactions/:id` | Обновить транзакцию по id                       | `transactions.controller.ts` | заглушка (строка) |
-| DELETE | `/transactions/:id` | Удалить транзакцию по id                        | `transactions.controller.ts` | заглушка (строка) |
+| DELETE | `/transactions/:id` | Удалить транзакцию по id. 404, если нет в БД    | `transactions.controller.ts` | реализован        |

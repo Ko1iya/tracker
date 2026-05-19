@@ -1,7 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PrismaService } from '../prisma/prisma.service';
+
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
 @Injectable()
 export class TransactionsService {
@@ -22,9 +26,16 @@ export class TransactionsService {
     });
   }
 
-  async findAll() {
-    // Получить вообще все транзакции из базы
-    return await this.prisma.transaction.findMany();
+  async findAll(limit?: number, offset?: number) {
+    // Нормализуем пагинацию: limit в диапазоне [1..MAX_LIMIT], offset >= 0
+    const take = Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+    const skip = Math.max(offset ?? 0, 0);
+
+    return await this.prisma.transaction.findMany({
+      orderBy: { date: 'desc' },
+      take,
+      skip,
+    });
   }
 
   findOne(id: number) {
@@ -36,7 +47,18 @@ export class TransactionsService {
     return `This action updates a #${id} transaction`;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} transaction`;
+  async remove(id: number) {
+    try {
+      return await this.prisma.transaction.delete({ where: { id } });
+    } catch (error) {
+      // Prisma бросает P2025, если записи нет — превращаем в 404
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException(`Transaction with id ${id} not found`);
+      }
+      throw error;
+    }
   }
 }
