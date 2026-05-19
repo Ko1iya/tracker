@@ -21,6 +21,24 @@ budget-api/
     ├── prisma/
     │   ├── prisma.module.ts    # NestJS module: провайдит и экспортирует PrismaService для других модулей
     │   └── prisma.service.ts   # Wrapper над PrismaClient: connect/disconnect на lifecycle hooks
+    ├── users/
+    │   ├── users.module.ts     # NestJS module: импортирует PrismaModule, экспортирует UsersService
+    │   └── users.service.ts    # Слой работы с моделью User: findByEmail, findById, create
+    ├── auth/
+    │   ├── auth.module.ts                  # NestJS module: подключает Passport + JwtModule.registerAsync (читает JWT_SECRET через ConfigService)
+    │   ├── auth.controller.ts              # REST endpoints POST /auth/register, POST /auth/login
+    │   ├── auth.service.ts                 # bcrypt-хеши паролей + выпуск access JWT через JwtService
+    │   ├── dto/
+    │   │   ├── register.dto.ts             # RegisterDto: email (IsEmail), password (MinLength 8)
+    │   │   └── login.dto.ts                # LoginDto: email (IsEmail), password (IsString)
+    │   ├── strategies/
+    │   │   └── jwt.strategy.ts             # passport-jwt стратегия: Bearer-токен → { sub, email } → req.user
+    │   ├── guards/
+    │   │   └── jwt-auth.guard.ts           # JwtAuthGuard extends AuthGuard('jwt') — для @UseGuards
+    │   ├── decorators/
+    │   │   └── current-user.decorator.ts   # @CurrentUser() — параметр-декоратор, достающий user из request
+    │   └── types/
+    │       └── jwt-payload.ts              # Типы JwtPayload (sub, email) и AuthenticatedUser (id, email)
     └── transactions/
         ├── transactions.module.ts                  # NestJS module для домена транзакций
         ├── transactions.controller.ts              # REST endpoints (POST/GET/PATCH/DELETE /transactions)
@@ -50,8 +68,8 @@ budget-api/
 
 #### `src/`
 
-- **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)` и слушает `process.env.PORT ?? 3000`.
-- **`app.module.ts`** — корневой `@Module`. Импортирует `PrismaModule` и `TransactionsModule`, регистрирует `AppController`, провайдит `AppService`.
+- **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)`, регистрирует глобальный `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) и слушает `process.env.PORT ?? 3000`.
+- **`app.module.ts`** — корневой `@Module`. Импортирует `ConfigModule.forRoot({ isGlobal: true })`, `PrismaModule`, `UsersModule`, `AuthModule` и `TransactionsModule`, регистрирует `AppController`, провайдит `AppService`.
 - **`app.controller.ts`** — `AppController` без префикса. Один endpoint `GET /` → `appService.getHello()`.
 - **`app.service.ts`** — `AppService.getHello()` возвращает строку `'Hello World!!'`. Placeholder из стартового шаблона NestJS.
 
@@ -60,24 +78,41 @@ budget-api/
 - **`prisma.module.ts`** — `PrismaModule`. Провайдит `PrismaService` и **экспортирует** его, чтобы любой модуль, импортирующий `PrismaModule`, получал общий инстанс (один `PrismaClient` на всё приложение).
 - **`prisma.service.ts`** — `PrismaService extends PrismaClient`. Реализует `OnModuleInit` (`$connect`) и `OnModuleDestroy` (`$disconnect`) — открывает/закрывает соединение с БД на старте/остановке приложения. **Внешняя интеграция:** Prisma Client → PostgreSQL.
 
+#### `src/users/`
+
+- **`users.module.ts`** — `UsersModule`. Импортирует `PrismaModule`, провайдит и **экспортирует** `UsersService` для других модулей (в частности, `AuthModule`).
+- **`users.service.ts`** — `UsersService` с injected `PrismaService`. Методы: `findByEmail(email)`, `findById(id)`, `create({ email, passwordHash })`. Внутренний слой — контроллера у модуля пока нет, наружу не торчит. **Внешняя интеграция:** Prisma Client.
+
+#### `src/auth/`
+
+- **`auth.module.ts`** — `AuthModule`. Импортирует `UsersModule`, `PassportModule` и `JwtModule.registerAsync` (читает `JWT_SECRET` и `JWT_EXPIRES_IN` через `ConfigService`). Провайдит `AuthService` и `JwtStrategy`, регистрирует `AuthController`.
+- **`auth.controller.ts`** — `AuthController` с префиксом `/auth`. Два метода: `register` (POST `/auth/register`), `login` (POST `/auth/login`, `@HttpCode(200)`). Тело валидируется через `RegisterDto`/`LoginDto`.
+- **`auth.service.ts`** — `AuthService` с injected `UsersService` и `JwtService`. `register` — проверяет уникальность email (409 Conflict), хеширует пароль `bcrypt.hash` (10 rounds), создаёт юзера, возвращает `{ accessToken, user: { id, email } }`. `login` — `findByEmail` + `bcrypt.compare`, при ошибке — 401 Unauthorized. **Внешняя интеграция:** `bcrypt`, `@nestjs/jwt`.
+- **`dto/register.dto.ts`** — `RegisterDto`. Поля: `email` (`@IsEmail`), `password` (`@IsString`, `@MinLength(8)`).
+- **`dto/login.dto.ts`** — `LoginDto`. Поля: `email` (`@IsEmail`), `password` (`@IsString`).
+- **`strategies/jwt.strategy.ts`** — `JwtStrategy extends PassportStrategy(Strategy)`. Извлекает токен из `Authorization: Bearer …`, проверяет подпись секретом из `JWT_SECRET`. `validate(payload)` → `AuthenticatedUser { id, email }`, которая ложится в `request.user`. **Внешняя интеграция:** `passport-jwt`.
+- **`guards/jwt-auth.guard.ts`** — `JwtAuthGuard extends AuthGuard('jwt')`. Вешается через `@UseGuards(JwtAuthGuard)` на контроллеры/методы — запросы без валидного JWT получают 401.
+- **`decorators/current-user.decorator.ts`** — `@CurrentUser()`. Параметр-декоратор, возвращающий `AuthenticatedUser` из `request.user` (заполняется `JwtStrategy.validate`).
+- **`types/jwt-payload.ts`** — типы `JwtPayload { sub: number; email: string }` (то, что подписываем в токен) и `AuthenticatedUser { id: number; email: string }` (то, что доступно в `req.user`).
+
 #### `src/transactions/`
 
 - **`transactions.module.ts`** — `TransactionsModule`. Импортирует `PrismaModule`, регистрирует `TransactionsController` и `TransactionsService`.
-- **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Пять методов: `create` (POST), `findAll` (GET, с query `limit`/`offset` через `ParseIntPipe({ optional: true })`), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Параметр `:id` валидируется `ParseIntPipe`. Все методы делегируют в `TransactionsService`.
-- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Реализованы: `create` (`prisma.transaction.create` со связыванием `user.connect`), `findAll(limit?, offset?)` (`prisma.transaction.findMany` с `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `remove(id)` (`prisma.transaction.delete`, ошибку Prisma `P2025` превращает в `NotFoundException`). Методы `findOne`, `update` — пока заглушки, возвращают строки. **Внешняя интеграция:** Prisma Client.
-- **`dto/create-transaction.dto.ts`** — `CreateTransactionDto`. Поля: `amount: number`, `description: string`, `type: 'INCOME' | 'EXPENSE'`, `userId: number`. Валидация (class-validator) пока не подключена.
-- **`dto/update-transaction.dto.ts`** — `UpdateTransactionDto extends PartialType(CreateTransactionDto)`. Все поля опциональны (через `@nestjs/mapped-types`).
+- **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Целиком закрыт `@UseGuards(JwtAuthGuard)` — все методы требуют валидный JWT. `userId` достаётся из токена через `@CurrentUser()` и пробрасывается в сервис. Пять методов: `create` (POST), `findAll` (GET, с query `limit`/`offset` через `ParseIntPipe({ optional: true })`), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Параметр `:id` валидируется `ParseIntPipe`.
+- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Все методы принимают `userId` первым параметром и фильтруют/связывают по нему. Реализованы: `create(userId, dto)` (`prisma.transaction.create` со связыванием `user.connect`), `findAll(userId, limit?, offset?)` (`findMany` с `where: { userId }`, `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `remove(userId, id)` (`deleteMany` с `where: { id, userId }` — атомарная проверка владения; `count === 0` → `NotFoundException`). Методы `findOne`, `update` — пока заглушки, возвращают строки. **Внешняя интеграция:** Prisma Client.
+- **`dto/create-transaction.dto.ts`** — `CreateTransactionDto`. Поля с валидацией: `amount` (`@IsNumber({ maxDecimalPlaces: 2 })`, `@IsPositive`), `description?` (`@IsOptional`, `@IsString`, `@MaxLength(255)`), `type` (`@IsIn(['INCOME', 'EXPENSE'])`). `userId` в DTO **нет** — берётся из JWT.
+- **`dto/update-transaction.dto.ts`** — `UpdateTransactionDto extends PartialType(CreateTransactionDto)`. Все поля опциональны (через `@nestjs/mapped-types`), валидация наследуется.
 - **`entities/transaction.entity.ts`** — `class Transaction {}`. Пустая заглушка от `nest g resource`, не используется (модель транзакции описана в `schema.prisma`).
 
 ---
 
 ## API Routes
 
-Все маршруты пока без авторизации.
-
 | Method | Route               | Описание                                        | Файл                         | Статус            |
 | ------ | ------------------- | ----------------------------------------------- | ---------------------------- | ----------------- |
-| GET    | `/`                 | Возвращает строку-приветствие (`Hello World!!`) | `app.controller.ts`          | реализован        |
+| GET    | `/`                 | Возвращает строку-приветствие (`Hello World!!`) | `app.controller.ts`          | реализован, публичный |
+| POST   | `/auth/register`    | Регистрация по `RegisterDto`. Возвращает `{ accessToken, user }`. 409 если email занят | `auth.controller.ts` | реализован, публичный |
+| POST   | `/auth/login`       | Логин по `LoginDto`. Возвращает `{ accessToken, user }`. 401 при неверной паре | `auth.controller.ts` | реализован, публичный |
 | POST   | `/transactions`     | Создать транзакцию по `CreateTransactionDto`    | `transactions.controller.ts` | реализован        |
 | GET    | `/transactions`     | Список транзакций, сортировка по `date` DESC. Query: `limit` (default 50, max 100), `offset` (default 0) | `transactions.controller.ts` | реализован        |
 | GET    | `/transactions/:id` | Получить транзакцию по id                       | `transactions.controller.ts` | заглушка (строка) |

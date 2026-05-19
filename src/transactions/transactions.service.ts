@@ -9,49 +9,49 @@ const MAX_LIMIT = 100;
 
 @Injectable()
 export class TransactionsService {
-  // Внедряем PrismaService через конструктор
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createTransactionDto: CreateTransactionDto) {
-    // Логика сохранения в БД
-    return await this.prisma.transaction.create({
+  create(userId: number, dto: CreateTransactionDto) {
+    return this.prisma.transaction.create({
       data: {
-        amount: createTransactionDto.amount,
-        description: createTransactionDto.description,
-        type: createTransactionDto.type,
-        user: {
-          connect: { id: createTransactionDto.userId }, // Связываем с пользователем
-        },
+        amount: dto.amount,
+        description: dto.description,
+        type: dto.type,
+        user: { connect: { id: userId } },
       },
     });
   }
 
-  async findAll(limit?: number, offset?: number) {
-    // Нормализуем пагинацию: limit в диапазоне [1..MAX_LIMIT], offset >= 0
+  findAll(userId: number, limit?: number, offset?: number) {
     const take = Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
     const skip = Math.max(offset ?? 0, 0);
 
-    return await this.prisma.transaction.findMany({
+    return this.prisma.transaction.findMany({
+      where: { userId },
       orderBy: { date: 'desc' },
       take,
       skip,
     });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} transaction`;
+  findOne(userId: number, id: number) {
+    return `This action returns a #${id} transaction for user ${userId}`;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  update(id: number, updateTransactionDto: UpdateTransactionDto) {
-    return `This action updates a #${id} transaction`;
+  update(userId: number, id: number, _dto: UpdateTransactionDto) {
+    return `This action updates a #${id} transaction for user ${userId}`;
   }
 
-  async remove(id: number) {
+  async remove(userId: number, id: number) {
     try {
-      return await this.prisma.transaction.delete({ where: { id } });
+      const result = await this.prisma.transaction.deleteMany({
+        where: { id, userId },
+      });
+      if (result.count === 0) {
+        throw new NotFoundException(`Transaction with id ${id} not found`);
+      }
+      return { id };
     } catch (error) {
-      // Prisma бросает P2025, если записи нет — превращаем в 404
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2025'
