@@ -34,13 +34,25 @@ export class TransactionsService {
     });
   }
 
-  findOne(userId: number, id: number) {
-    return `This action returns a #${id} transaction for user ${userId}`;
+  async findOne(userId: number, id: number) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { id, userId },
+    });
+    if (!transaction) {
+      throw new NotFoundException(`Transaction with id ${id} not found`);
+    }
+    return transaction;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  update(userId: number, id: number, _dto: UpdateTransactionDto) {
-    return `This action updates a #${id} transaction for user ${userId}`;
+  async update(userId: number, id: number, dto: UpdateTransactionDto) {
+    const result = await this.prisma.transaction.updateMany({
+      where: { id, userId },
+      data: dto,
+    });
+    if (result.count === 0) {
+      throw new NotFoundException(`Transaction with id ${id} not found`);
+    }
+    return this.prisma.transaction.findUnique({ where: { id } });
   }
 
   async remove(userId: number, id: number) {
