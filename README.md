@@ -1,73 +1,167 @@
-# React + TypeScript + Vite
+# 🚀 Tracker: AI Budget App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Описание проекта:** Конкурентное приложение для ведения личного бюджета.
+**Главная фича (Киллер-фича):** Ввод расходов голосом. Пользователь
+надиктовывает трату, AI распознает речь, парсит смысл и автоматически
+категоризирует покупку. **Стек технологий:** React (Vite), Node.js (NestJS),
+PostgreSQL, Prisma ORM, OpenAI API (Whisper + GPT/Claude), Capacitor (для
+мобильной версии), Local-first (в будущем).
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🟢 Этап 1: Фундамент Бэкенда (Backend Core)
 
-## React Compiler
+**Цель:** Поднять сервер, настроить базу данных и реализовать базовый CRUD
+(создание, чтение, обновление, удаление) для транзакций и пользователей.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- [x] **Инициализация проекта**
+  - [x] Установить NestJS CLI (`@nestjs/cli`).
+  - [x] Создать проект `budget-api`.
+- [x] **Настройка Базы Данных (PostgreSQL + Docker)**
+  - [x] Создать `docker-compose.yml` с образом `postgres:16`.
+  - [x] Запустить контейнер с базой данных (`docker-compose up -d`).
+- [x] **Интеграция ORM (Prisma)**
+  - [x] Установить `prisma` и `@prisma/client`.
+  - [x] Инициализировать Prisma (`npx prisma init`).
+  - [x] Настроить строку подключения `DATABASE_URL` в `.env`.
+- [x] **Проектирование схемы БД (Schema)**
+  - [x] Описать модель `User` (пользователь).
+  - [x] Описать модель `Category` (категории трат).
+  - [x] Описать модель `Transaction` (транзакции с привязкой к юзеру и
+        категории).
+  - [x] Накатить первую миграцию (`npx prisma migrate dev --name init`).
+- [x] **Базовый API для транзакций**
+  - [x] Создать `PrismaService` для работы с БД из кода NestJS.
+  - [x] Сгенерировать REST API ресурс для транзакций
+        (`nest g resource transactions`).
+  - [x] Создать тестового пользователя через `npx prisma studio`.
+  - [x] Написать DTO (`CreateTransactionDto`) для валидации входящих данных.
+  - [x] Реализовать метод `create` в сервисе (сохранение в БД).
+  - [x] Проверить `POST /transactions` запрос (через cURL/Postman).
+- [x] **Доработка API (CRUD)**
+  - [x] Реализовать `GET /transactions` (получение списка с сортировкой по
+        дате).
+  - [x] Добавить пагинацию (или лимит, например, последние 50 трат) для
+        GET-запроса.
+  - [x] Реализовать `DELETE /transactions/:id` (удаление ошибочной траты).
+- [x] **Авторизация (Auth) — _Опционально для MVP, но важно_**
+  - [x] Настроить JWT (JSON Web Token) в NestJS.
+  - [x] Сделать эндпоинты `POST /auth/register` и `POST /auth/login`.
+  - [x] Закрыть эндпоинты транзакций Guard'ом (чтобы только авторизованный юзер
+        мог добавлять траты).
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🟡 Этап 2: Базовый Фронтенд (Frontend MVP)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+**Цель:** Сделать веб-интерфейс, где можно видеть список трат и добавлять их
+вручную.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- [ ] **Инициализация React-приложения**
+  - [x] Создать проект через Vite
+        (`npm create vite@latest budget-web -- --template react-ts`).
+  - [ ] Настроить роутинг (React Router: страницы Login, Home, Settings).
+  - [ ] Установить Tailwind CSS для стилей.
+  - [ ] Настроить UI-библиотеку (рекомендуется `shadcn/ui` для красивых
+        компонентов).
+- [ ] **Интеграция с API (Связь с Бэкендом)**
+  - [ ] Настроить `axios` (или `fetch`) для запросов к NestJS.
+  - [ ] Настроить CORS в NestJS (чтобы фронтенд мог делать запросы к бэкенду).
+  - [ ] (Опционально) Подключить React Query / TanStack Query для удобного
+        кеширования запросов.
+- [ ] **UI: Главная страница (Лента расходов)**
+  - [ ] Компонент "Список транзакций". -[ ] Красивое форматирование даты и
+        валюты.
+  - [ ] Вывод общей суммы трат за текущий месяц (простая аналитика).
+- [ ] **UI: Ручной ввод расходов**
+  - [ ] Кнопка "+" на главном экране.
+  - [ ] Модальное окно или Drawer (шторка снизу) с формой.
+  - [ ] Форма: Сумма, Описание, Категория (селект).
+  - [ ] Отправка формы на сервер и обновление ленты.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🟠 Этап 3: "Киллер-фича" (Голосовой AI ввод)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+**Цель:** Реализовать распознавание аудио и парсинг смысла через нейросети.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- [ ] **Бэкенд: Работа с файлами**
+  - [ ] Настроить загрузку файлов в NestJS (использовать `Multer` для приема
+        аудио).
+  - [ ] Создать эндпоинт `POST /transactions/voice`.
+- [ ] **Бэкенд: Интеграция с OpenAI (или аналогами)**
+  - [ ] Зарегистрироваться и получить API Key (OpenAI / Anthropic).
+  - [ ] Шаг 1: Интегрировать Whisper API (отправка аудиофайла -> получение
+        текста).
+  - [ ] Шаг 2: Написать системный Prompt для LLM (GPT-4o-mini / Claude 3.5).
+        Пример: _"Ты финансовый помощник. Извлеки из текста сумму, валюту,
+        категорию и описание. Верни строгий JSON..."_.
+  - [ ] Шаг 3: Написать логику сохранения полученного JSON в базу данных.
+- [ ] **Фронтенд: Диктофон**
+  - [ ] Реализовать кнопку "Микрофон" на главном экране.
+  - [ ] Использовать `MediaRecorder API` для записи голоса в браузере.
+  - [ ] Добавить UI-анимацию "Идет запись..." (пульсирующая кнопка/волны).
+  - [ ] Логика: отпускаем кнопку -> отправляем `.webm` / `.mp3` Blob на сервер
+        -> показываем лоадер "Распознаем..." -> добавляем новую трату в список.
+
+---
+
+## 🟣 Этап 4: Advanced UX & Local-First (Сложная архитектура)
+
+**Цель:** Сделать работу приложения мгновенной и независимой от интернета.
+
+- [ ] **Оптимистичный UI (Optimistic Updates)**
+  - [ ] При добавлении траты руками или голосом (когда текст уже известен),
+        мгновенно показывать её в списке, не дожидаясь ответа от сервера.
+- [ ] **Локальная База Данных (Local-First)**
+  - [ ] Выбрать инструмент для фронта (IndexedDB, Dexie.js или PGlite).
+  - [ ] Настроить сохранение загруженных с сервера транзакций в локальную БД.
+  - [ ] При открытии приложения грузить данные сначала из локальной БД
+        (мгновенный старт).
+- [ ] **Движок Синхронизации (Offline Mode)**
+  - [ ] Отслеживать статус сети (`navigator.onLine`).
+  - [ ] Если интернета нет, сохранять новые траты в очередь (Queue) локально.
+  - [ ] Как только интернет появляется — фоново отправлять очередь на сервер
+        NestJS.
+
+---
+
+## 📱 Этап 5: Кроссплатформа (Мобильное приложение)
+
+**Цель:** Портировать веб-версию на iOS и Android.
+
+- [ ] **Интеграция Capacitor**
+  - [ ] Установить `@capacitor/core` и `@capacitor/cli` в React-проект.
+  - [ ] Инициализировать Capacitor (`npx cap init`).
+- [ ] **Нативные функции**
+  - [ ] Заменить браузерный `MediaRecorder` на нативный плагин Capacitor для
+        записи аудио (если браузерный работает нестабильно на iOS).
+  - [ ] Настроить Safe Areas (отступы для "челки" iPhone и шторки Android).
+- [ ] **Сборка**
+  - [ ] Добавить Android платформу (`npx cap add android`) и собрать APK.
+  - [ ] Добавить iOS платформу (`npx cap add ios`) и запустить в XCode.
+
+---
+
+## 🌐 Этап 6: Релиз (Production)
+
+**Цель:** Выкатить проект в интернет для реальных пользователей.
+
+- [ ] Арендовать VPS/VDS (например, на Timeweb, Selectel, DigitalOcean).
+- [ ] Настроить production базу данных (не Docker на локалке, а управляемую БД
+      или надежный контейнер на сервере с бекапами).
+- [ ] Настроить CI/CD (GitHub Actions) для автоматического деплоя при пуше в
+      `main`.
+- [ ] Прикрутить домен и SSL (HTTPS) сертификат (Nginx / Traefik).
+- [ ] Настроить сбор метрик и логов (чтобы видеть, как пользователи ошибаются
+      или где API падает).
+
+---
+
+_Последнее обновление: Март 2026_
+
+---
+
+Когда скопируешь, напиши мне. В следующем сообщении мы закончим API для
+получения списка транзакций и перейдем к тестированию "Киллер-фичи" на стороне
+бэкенда!
