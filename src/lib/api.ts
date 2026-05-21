@@ -1,5 +1,5 @@
 import axios from "axios"
-import { clearToken, getToken } from "./auth"
+import { clearToken, getToken } from "./token"
 
 // Единый axios-клиент для запросов к budget-api (NestJS).
 // baseURL берётся из .env (VITE_API_URL); все запросы строятся относительно него,

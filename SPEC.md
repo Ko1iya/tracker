@@ -17,18 +17,31 @@ budget-web/
     ├── App.tsx                # Корневой компонент: настраивает клиентский роутинг (BrowserRouter + Routes)
     ├── index.css              # Tailwind + тема shadcn/ui (CSS-переменные, шрифт Inter, light/dark)
     ├── vite-env.d.ts          # Типы Vite-окружения: объявляет import.meta.env.VITE_API_URL
-    ├── lib/
+    ├── lib/                   # Инфраструктура, не зависящая от фич
     │   ├── utils.ts           # Утилита cn() для склейки classNames (clsx + tailwind-merge)
-    │   ├── auth.ts            # Хранение JWT-токена в localStorage: getToken/setToken/clearToken
+    │   ├── token.ts           # Хранение JWT-токена в localStorage: getToken/setToken/clearToken
     │   ├── api.ts             # axios-клиент к budget-api: baseURL из env, JWT-перехватчик, обработка 401
-    │   └── queryClient.ts     # Глобальный QueryClient (TanStack Query) с дефолтными опциями кеша
+    │   ├── queryClient.ts     # Глобальный QueryClient (TanStack Query) с дефолтными опциями кеша
+    │   └── format.ts          # Форматирование дат и денег через Intl: formatCurrency, formatDate
+    ├── features/              # Бизнес-фичи: каждая со своими api/hooks/типами
+    │   ├── auth/
+    │   │   ├── api.ts         # login() → POST /auth/login; типы AuthUser, AuthResponse
+    │   │   ├── schema.ts      # zod-схема формы входа loginSchema + тип LoginFormValues
+    │   │   └── hooks.ts       # useLogin (мутация входа), useLogout (разлогин)
+    │   └── transactions/
+    │       ├── api.ts         # getTransactions() → GET /transactions; типы Transaction, TransactionType
+    │       ├── keys.ts        # Реестр query-ключей TanStack Query (transactionKeys)
+    │       ├── hooks.ts       # useTransactions (чтение списка через useQuery)
+    │       └── totals.ts      # monthlyExpenses — расходы за текущий месяц (чистая функция)
     ├── components/
-    │   ├── Layout.tsx         # Каркас авторизованных страниц: навигация + <Outlet />, стили на Tailwind
+    │   ├── Layout.tsx         # Визуальный каркас авторизованных страниц: навигация + <Outlet />
+    │   ├── ProtectedRoute.tsx # Гард доступа: без JWT редиректит на /login
     │   └── ui/
-    │       └── button.tsx     # Компонент Button (shadcn/ui): варианты и размеры через cva
+    │       ├── button.tsx     # Компонент Button (shadcn/ui): варианты и размеры через cva
+    │       └── input.tsx      # Компонент Input (shadcn/ui): стилизованное текстовое поле
     └── pages/
-        ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц (заглушка)
-        ├── LoginPage.tsx      # Страница входа, рендерится вне Layout (заглушка)
+        ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц
+        ├── LoginPage.tsx      # Страница входа (форма на react-hook-form + zod), вне Layout
         └── SettingsPage.tsx   # Страница настроек (заглушка)
 ```
 
@@ -42,29 +55,45 @@ budget-web/
 #### `src/`
 
 - **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`, обёрнутый в `QueryClientProvider` (TanStack Query) с клиентом из `lib/queryClient.ts`. Импортирует глобальный `index.css`.
-- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно, `/` и `/settings` — внутри `Layout`. Несуществующие пути ведут на `HomePage`.
+- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно; закрытая зона (`/`, `/settings` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас).
 - **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (preflight-сброс). Дальше — тема shadcn/ui: CSS-переменные дизайн-токенов (`--background`, `--primary` и т.д.) в `:root` и `.dark`, маппинг токенов в Tailwind через `@theme inline`, шрифт Inter (`@fontsource-variable/inter`), `@layer base` для базовых стилей `body`/`html`.
 - **`vite-env.d.ts`** — декларации типов окружения Vite. Подключает `vite/client` и типизирует `import.meta.env.VITE_API_URL` (базовый URL `budget-api`).
 
-#### `src/lib/`
+#### `src/lib/` (инфраструктура, не зависит от фич)
 
 - **`utils.ts`** — утилита `cn(...)` (named export): объединяет классы через `clsx` и снимает конфликты Tailwind через `tailwind-merge`. Используется всеми компонентами shadcn/ui.
-- **`auth.ts`** — работа с JWT-токеном в `localStorage` (named exports `getToken`, `setToken`, `clearToken`). Токен budget-api выдаёт на `POST /auth/login`; он нужен в заголовке `Authorization: Bearer <token>` для защищённых эндпоинтов.
-- **`api.ts`** — `api` (named export), настроенный axios-инстанс к `budget-api`. `baseURL` из `import.meta.env.VITE_API_URL`. Request-перехватчик подставляет JWT из `auth.ts` в заголовок `Authorization`; response-перехватчик при ответе `401` чистит токен и редиректит на `/login`.
+- **`token.ts`** — низкоуровневое хранилище JWT-токена в `localStorage` (named exports `getToken`, `setToken`, `clearToken`). Токен budget-api выдаёт на `POST /auth/login`; он нужен в заголовке `Authorization: Bearer <token>` для защищённых эндпоинтов. Слой `lib` не знает про фичу `auth` — наоборот, фича и axios-клиент пользуются этими функциями.
+- **`api.ts`** — `api` (named export), настроенный axios-инстанс к `budget-api`. `baseURL` из `import.meta.env.VITE_API_URL`. Request-перехватчик подставляет JWT из `token.ts` в заголовок `Authorization`; response-перехватчик при ответе `401` чистит токен и редиректит на `/login`.
 - **`queryClient.ts`** — `queryClient` (named export), глобальный `QueryClient` (TanStack Query). Дефолтные опции: `staleTime` 60с, без рефетча по фокусу окна, один повтор при ошибке. Подключается в `main.tsx`.
+- **`format.ts`** — форматирование через встроенный `Intl` (named exports `formatCurrency`, `formatDate`). `formatCurrency(amount, currency)` — деньги в локали `ru-RU` (кеширует `Intl.NumberFormat` по валюте); `formatDate(date)` — дата вида «5 мая». `amount` принимается строкой/числом (с бэкенда приходит строкой из-за Prisma `Decimal`).
+
+#### `src/features/auth/`
+
+- **`api.ts`** — `login(email, password)` (named export): `POST /auth/login` в budget-api, возвращает `{ accessToken, user }`. Типы `AuthUser`, `AuthResponse`. При неверных данных бэкенд отвечает 401.
+- **`schema.ts`** — `loginSchema` (zod) и выводимый из неё тип `LoginFormValues` (named exports). Клиентская валидация формы входа; поля синхронны с `LoginDto` бэкенда (email, password).
+- **`hooks.ts`** — `useLogin` и `useLogout` (named exports). `useLogin` — мутация TanStack Query: вызывает `login()`, при успехе сохраняет JWT (`setToken`) и уходит на `/`. `useLogout` — колбэк: чистит токен и уходит на `/login` (сетевого запроса нет, JWT stateless).
+
+#### `src/features/transactions/`
+
+- **`api.ts`** — `getTransactions()` (named export): `GET /transactions` (требует JWT), возвращает массив транзакций. Типы `Transaction` (поле `amount` — строка, т.к. Prisma `Decimal`) и `TransactionType` (`INCOME` | `EXPENSE`).
+- **`keys.ts`** — `transactionKeys` (named export), реестр query-ключей TanStack Query. Централизует ключи кеша, чтобы чтение и будущие инвалидации (создание расхода) использовали одни и те же значения.
+- **`hooks.ts`** — `useTransactions` (named export): чтение списка транзакций через `useQuery` под ключом `transactionKeys.all`.
+- **`totals.ts`** — `monthlyExpenses(transactions)` (named export): чистая функция, сумма расходов (EXPENSE) за текущий календарный месяц.
 
 #### `src/components/`
 
-- **`Layout.tsx`** — `Layout` (default export). Общий каркас авторизованных страниц: шапка с `NavLink`-навигацией (Главная, Настройки, Выход) и `<Outlet />`, куда React Router подставляет текущую вложенную страницу. Стили — на utility-классах Tailwind.
+- **`Layout.tsx`** — `Layout` (default export). Визуальный каркас авторизованных страниц: шапка с `NavLink`-навигацией (Главная, Настройки) и кнопкой «Выход» (через `useLogout`); `<Outlet />` под вложенные страницы. Стили — Tailwind. Проверку доступа делает `ProtectedRoute` выше по дереву.
+- **`ProtectedRoute.tsx`** — `ProtectedRoute` (default export). Гард доступа: при отсутствии JWT-токена редиректит на `/login` (`<Navigate replace />`), иначе рендерит `<Outlet />`. Отделён от `Layout`, чтобы доступ и вёрстка были разными ответственностями.
 
 #### `src/components/ui/` (shadcn/ui)
 
 - **`button.tsx`** — `Button` (named export) и `buttonVariants`. Компонент кнопки shadcn/ui: варианты (`default`, `outline`, `secondary`, `ghost`, `destructive`, `link`) и размеры через `class-variance-authority`. Поддерживает `asChild` (рендер как дочерний элемент через Radix `Slot`).
+- **`input.tsx`** — `Input` (named export). Стилизованное текстовое поле shadcn/ui (обёртка над `<input>` с классами темы). Используется в формах, например на странице входа.
 
 #### `src/pages/`
 
-- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: по плану лента расходов и сумма за месяц. Сейчас заглушка.
-- **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа, рендерится вне `Layout` (без навигации). По плану — форма авторизации и запрос к `POST /auth/login` в `budget-api`. Сейчас заглушка.
+- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`).
+- **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLogin`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
 - **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница настроек. Сейчас заглушка.
 
 ---
@@ -75,7 +104,7 @@ budget-web/
 
 | Path        | Страница/компонент | Описание                                        | Файл                       | Статус   |
 | ----------- | ------------------ | ----------------------------------------------- | -------------------------- | -------- |
-| `/`         | `HomePage`         | Лента расходов и сводка за месяц (внутри Layout) | `src/pages/HomePage.tsx`   | заглушка |
-| `/settings` | `SettingsPage`     | Настройки (внутри Layout)                       | `src/pages/SettingsPage.tsx` | заглушка |
-| `/login`    | `LoginPage`        | Вход, отдельно от Layout (без навигации)        | `src/pages/LoginPage.tsx`  | заглушка |
-| `*`         | `HomePage`         | Фолбэк: любой неизвестный путь ведёт на главную  | `src/App.tsx`              | заглушка |
+| `/`         | `HomePage`         | Лента расходов и сводка за месяц (внутри Layout, требует авторизации) | `src/pages/HomePage.tsx`   | готово   |
+| `/settings` | `SettingsPage`     | Настройки (внутри Layout, требует авторизации)  | `src/pages/SettingsPage.tsx` | заглушка |
+| `/login`    | `LoginPage`        | Вход, отдельно от Layout (без навигации)        | `src/pages/LoginPage.tsx`  | готово   |
+| `*`         | `HomePage`         | Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную (без токена — на `/login`) | `src/App.tsx`              | готово   |
