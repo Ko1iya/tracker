@@ -13,11 +13,15 @@ budget-web/
 ├── index.html                 # HTML-шаблон Vite: lang="ru", контейнер #root, подключает /src/main.tsx
 ├── vite.config.ts             # Конфиг Vite: плагины @vitejs/plugin-react и @tailwindcss/vite
 └── src/
-    ├── main.tsx               # Точка входа: монтирует <App /> в #root через createRoot в StrictMode, импортирует index.css
+    ├── main.tsx               # Точка входа: монтирует <App /> в #root, оборачивает в QueryClientProvider (TanStack Query)
     ├── App.tsx                # Корневой компонент: настраивает клиентский роутинг (BrowserRouter + Routes)
     ├── index.css              # Tailwind + тема shadcn/ui (CSS-переменные, шрифт Inter, light/dark)
+    ├── vite-env.d.ts          # Типы Vite-окружения: объявляет import.meta.env.VITE_API_URL
     ├── lib/
-    │   └── utils.ts           # Утилита cn() для склейки classNames (clsx + tailwind-merge)
+    │   ├── utils.ts           # Утилита cn() для склейки classNames (clsx + tailwind-merge)
+    │   ├── auth.ts            # Хранение JWT-токена в localStorage: getToken/setToken/clearToken
+    │   ├── api.ts             # axios-клиент к budget-api: baseURL из env, JWT-перехватчик, обработка 401
+    │   └── queryClient.ts     # Глобальный QueryClient (TanStack Query) с дефолтными опциями кеша
     ├── components/
     │   ├── Layout.tsx         # Каркас авторизованных страниц: навигация + <Outlet />, стили на Tailwind
     │   └── ui/
@@ -37,13 +41,17 @@ budget-web/
 
 #### `src/`
 
-- **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`. Импортирует глобальный `index.css`.
+- **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`, обёрнутый в `QueryClientProvider` (TanStack Query) с клиентом из `lib/queryClient.ts`. Импортирует глобальный `index.css`.
 - **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно, `/` и `/settings` — внутри `Layout`. Несуществующие пути ведут на `HomePage`.
 - **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (preflight-сброс). Дальше — тема shadcn/ui: CSS-переменные дизайн-токенов (`--background`, `--primary` и т.д.) в `:root` и `.dark`, маппинг токенов в Tailwind через `@theme inline`, шрифт Inter (`@fontsource-variable/inter`), `@layer base` для базовых стилей `body`/`html`.
+- **`vite-env.d.ts`** — декларации типов окружения Vite. Подключает `vite/client` и типизирует `import.meta.env.VITE_API_URL` (базовый URL `budget-api`).
 
 #### `src/lib/`
 
 - **`utils.ts`** — утилита `cn(...)` (named export): объединяет классы через `clsx` и снимает конфликты Tailwind через `tailwind-merge`. Используется всеми компонентами shadcn/ui.
+- **`auth.ts`** — работа с JWT-токеном в `localStorage` (named exports `getToken`, `setToken`, `clearToken`). Токен budget-api выдаёт на `POST /auth/login`; он нужен в заголовке `Authorization: Bearer <token>` для защищённых эндпоинтов.
+- **`api.ts`** — `api` (named export), настроенный axios-инстанс к `budget-api`. `baseURL` из `import.meta.env.VITE_API_URL`. Request-перехватчик подставляет JWT из `auth.ts` в заголовок `Authorization`; response-перехватчик при ответе `401` чистит токен и редиректит на `/login`.
+- **`queryClient.ts`** — `queryClient` (named export), глобальный `QueryClient` (TanStack Query). Дефолтные опции: `staleTime` 60с, без рефетча по фокусу окна, один повтор при ошибке. Подключается в `main.tsx`.
 
 #### `src/components/`
 
