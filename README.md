@@ -62,8 +62,7 @@ PostgreSQL, Prisma ORM, OpenAI API (Whisper + GPT/Claude), Capacitor (для
         (`npm create vite@latest budget-web -- --template react-ts`).
   - [x] Настроить роутинг (React Router: страницы Login, Home, Settings).
   - [x] Установить Tailwind CSS для стилей.
-  - [ ] Настроить UI-библиотеку (рекомендуется `shadcn/ui` для красивых
-        компонентов).
+  - [x] Настроить UI-библиотеку `shadcn/ui`
 - [ ] **Интеграция с API (Связь с Бэкендом)**
   - [ ] Настроить `axios` (или `fetch`) для запросов к NestJS.
   - [ ] Настроить CORS в NestJS (чтобы фронтенд мог делать запросы к бэкенду).

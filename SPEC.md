@@ -15,9 +15,13 @@ budget-web/
 └── src/
     ├── main.tsx               # Точка входа: монтирует <App /> в #root через createRoot в StrictMode, импортирует index.css
     ├── App.tsx                # Корневой компонент: настраивает клиентский роутинг (BrowserRouter + Routes)
-    ├── index.css              # Подключает Tailwind (@import) + базовые :root-настройки шрифта и color-scheme
+    ├── index.css              # Tailwind + тема shadcn/ui (CSS-переменные, шрифт Inter, light/dark)
+    ├── lib/
+    │   └── utils.ts           # Утилита cn() для склейки classNames (clsx + tailwind-merge)
     ├── components/
-    │   └── Layout.tsx         # Каркас авторизованных страниц: навигация + <Outlet />, стили на Tailwind
+    │   ├── Layout.tsx         # Каркас авторизованных страниц: навигация + <Outlet />, стили на Tailwind
+    │   └── ui/
+    │       └── button.tsx     # Компонент Button (shadcn/ui): варианты и размеры через cva
     └── pages/
         ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц (заглушка)
         ├── LoginPage.tsx      # Страница входа, рендерится вне Layout (заглушка)
@@ -35,11 +39,19 @@ budget-web/
 
 - **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`. Импортирует глобальный `index.css`.
 - **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно, `/` и `/settings` — внутри `Layout`. Несуществующие пути ведут на `HomePage`.
-- **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (включая preflight-сброс). Плюс базовые `:root`-настройки: системный `font-family`, `line-height`, `color-scheme: light dark`.
+- **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (preflight-сброс). Дальше — тема shadcn/ui: CSS-переменные дизайн-токенов (`--background`, `--primary` и т.д.) в `:root` и `.dark`, маппинг токенов в Tailwind через `@theme inline`, шрифт Inter (`@fontsource-variable/inter`), `@layer base` для базовых стилей `body`/`html`.
+
+#### `src/lib/`
+
+- **`utils.ts`** — утилита `cn(...)` (named export): объединяет классы через `clsx` и снимает конфликты Tailwind через `tailwind-merge`. Используется всеми компонентами shadcn/ui.
 
 #### `src/components/`
 
 - **`Layout.tsx`** — `Layout` (default export). Общий каркас авторизованных страниц: шапка с `NavLink`-навигацией (Главная, Настройки, Выход) и `<Outlet />`, куда React Router подставляет текущую вложенную страницу. Стили — на utility-классах Tailwind.
+
+#### `src/components/ui/` (shadcn/ui)
+
+- **`button.tsx`** — `Button` (named export) и `buttonVariants`. Компонент кнопки shadcn/ui: варианты (`default`, `outline`, `secondary`, `ghost`, `destructive`, `link`) и размеры через `class-variance-authority`. Поддерживает `asChild` (рендер как дочерний элемент через Radix `Slot`).
 
 #### `src/pages/`
 
