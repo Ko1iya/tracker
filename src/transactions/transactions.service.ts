@@ -1,5 +1,12 @@
 /// <reference types="multer" />
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -8,9 +15,15 @@ import { PrismaService } from '../prisma/prisma.service';
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 
+const NEXARA_TRANSCRIBE_URL =
+  'https://api.nexara.ru/api/v1/audio/transcriptions';
+
 @Injectable()
 export class TransactionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async create(userId: number, dto: CreateTransactionDto) {
     if (dto.categoryId !== undefined) {
@@ -86,20 +99,60 @@ export class TransactionsService {
   }
 
   /**
-   * Голосовой ввод траты. Пока — заглушка: принимает аудиофайл и возвращает
-   * его метаданные. На Этапе 3 здесь появится цепочка Whisper (аудио → текст)
-   * → LLM (текст → JSON) → сохранение транзакции в БД.
+   * Голосовой ввод траты. Сейчас реализован Шаг 1 цепочки: аудио → текст
+   * через Nexara. Шаг 2 (LLM: текст → JSON) и Шаг 3 (сохранение в БД) —
+   * следующие под-блоки Этапа 3. Пока возвращаем распознанный текст.
    */
-  createFromVoice(userId: number, file: Express.Multer.File) {
-    return {
-      message: 'Аудио получено. AI-распознавание ещё не подключено.',
-      userId,
-      file: {
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-      },
-    };
+  async createFromVoice(userId: number, file: Express.Multer.File) {
+    const text = await this.transcribe(file);
+    return { userId, text };
+  }
+
+  /**
+   * Шаг 1: отправляет аудиобуфер в Nexara и возвращает распознанный текст.
+   * Файл приходит из multer в memory storage, поэтому доступен как Buffer
+   * в `file.buffer`. Nexara API-совместима с OpenAI Whisper.
+   */
+  private async transcribe(file: Express.Multer.File): Promise<string> {
+    const apiKey = this.config.get<string>('NEXARA_API_KEY');
+    if (!apiKey) {
+      throw new InternalServerErrorException(
+        'NEXARA_API_KEY не задан в окружении',
+      );
+    }
+
+    // Buffer → Blob → FormData. Имя файла важно: по расширению Nexara
+    // определяет формат аудио.
+    const form = new FormData();
+    const blob = new Blob([new Uint8Array(file.buffer)], {
+      type: file.mimetype,
+    });
+    form.append('file', blob, file.originalname);
+
+    let res: Response;
+    try {
+      res = await fetch(NEXARA_TRANSCRIBE_URL, {
+        method: 'POST',
+        // Content-Type не ставим вручную — fetch сам проставит boundary
+        // для multipart/form-data.
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+      });
+    } catch {
+      // Сеть упала / таймаут — внешний сервис недоступен.
+      throw new ServiceUnavailableException('Сервис распознавания недоступен');
+    }
+
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new BadGatewayException(`Nexara вернула ${res.status}: ${detail}`);
+    }
+
+    const data = (await res.json()) as { text?: string };
+    if (!data.text) {
+      throw new BadGatewayException('Nexara вернула пустой ответ');
+    }
+    return data.text;
   }
 
   private async assertCategoryOwned(userId: number, categoryId: number) {
