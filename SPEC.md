@@ -29,16 +29,22 @@ budget-web/
     │   │   ├── schema.ts      # zod-схема формы входа loginSchema + тип LoginFormValues
     │   │   └── hooks.ts       # useLogin (мутация входа), useLogout (разлогин)
     │   └── transactions/
-    │       ├── api.ts         # getTransactions() → GET /transactions; типы Transaction, TransactionType
+    │       ├── api.ts         # getTransactions() → GET /transactions, createTransaction() → POST /transactions; типы Transaction, TransactionType, CreateTransactionInput
     │       ├── keys.ts        # Реестр query-ключей TanStack Query (transactionKeys)
-    │       ├── hooks.ts       # useTransactions (чтение списка через useQuery)
-    │       └── totals.ts      # monthlyExpenses — расходы за текущий месяц (чистая функция)
+    │       ├── hooks.ts       # useTransactions (чтение), useCreateTransaction (создание + инвалидация кеша)
+    │       ├── schema.ts      # zod-схема формы создания createTransactionSchema + тип CreateTransactionFormValues
+    │       ├── categories.ts  # Заглушка категорий CATEGORY_OPTIONS (бэкенд категории пока не принимает)
+    │       ├── totals.ts      # monthlyExpenses — расходы за текущий месяц (чистая функция)
+    │       └── AddTransactionDialog.tsx # Модалка ручного добавления транзакции (форма + триггер «+»)
     ├── components/
     │   ├── Layout.tsx         # Визуальный каркас авторизованных страниц: навигация + <Outlet />
     │   ├── ProtectedRoute.tsx # Гард доступа: без JWT редиректит на /login
     │   └── ui/
     │       ├── button.tsx     # Компонент Button (shadcn/ui): варианты и размеры через cva
-    │       └── input.tsx      # Компонент Input (shadcn/ui): стилизованное текстовое поле
+    │       ├── input.tsx      # Компонент Input (shadcn/ui): стилизованное текстовое поле
+    │       ├── label.tsx      # Компонент Label (shadcn/ui): подпись к полю формы
+    │       ├── dialog.tsx     # Модальное окно (shadcn/ui, Radix Dialog): набор Dialog*-частей
+    │       └── select.tsx     # Выпадающий список (shadcn/ui, Radix Select): набор Select*-частей
     └── pages/
         ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц
         ├── LoginPage.tsx      # Страница входа (форма на react-hook-form + zod), вне Layout
@@ -75,10 +81,13 @@ budget-web/
 
 #### `src/features/transactions/`
 
-- **`api.ts`** — `getTransactions()` (named export): `GET /transactions` (требует JWT), возвращает массив транзакций. Типы `Transaction` (поле `amount` — строка, т.к. Prisma `Decimal`) и `TransactionType` (`INCOME` | `EXPENSE`).
-- **`keys.ts`** — `transactionKeys` (named export), реестр query-ключей TanStack Query. Централизует ключи кеша, чтобы чтение и будущие инвалидации (создание расхода) использовали одни и те же значения.
-- **`hooks.ts`** — `useTransactions` (named export): чтение списка транзакций через `useQuery` под ключом `transactionKeys.all`.
+- **`api.ts`** — функции запросов к budget-api (named exports). `getTransactions()` — `GET /transactions` (требует JWT), возвращает массив транзакций. `createTransaction(input)` — `POST /transactions` (требует JWT), создаёт транзакцию; `userId` бэкенд берёт из JWT, `currency`/`date` проставляет дефолтами. Типы `Transaction` (поле `amount` — строка, т.к. Prisma `Decimal`), `TransactionType` (`INCOME` | `EXPENSE`) и `CreateTransactionInput` (`amount`, `type`, опц. `description` — без категории, бэкенд её пока не принимает).
+- **`keys.ts`** — `transactionKeys` (named export), реестр query-ключей TanStack Query. Централизует ключи кеша, чтобы чтение и инвалидации (после создания) использовали одни и те же значения.
+- **`hooks.ts`** — `useTransactions` и `useCreateTransaction` (named exports). `useTransactions` — чтение списка через `useQuery` под ключом `transactionKeys.all`. `useCreateTransaction` — мутация создания (`createTransaction`), после успеха инвалидирует `transactionKeys.all`, чтобы лента сама перезапросилась.
+- **`schema.ts`** — `createTransactionSchema` (zod) и выводимый тип `CreateTransactionFormValues` (named exports). Клиентская валидация формы создания; поля `amount`/`description`/`type` синхронны с `CreateTransactionDto` бэкенда. `amount` приводится из строки `<input>` через `z.coerce`. `categoryId` — только для UI, на сервер не уходит.
+- **`categories.ts`** — `CATEGORY_OPTIONS` и тип `CategoryOption` (named exports). Захардкоженный список категорий — заглушка: budget-api пока не отдаёт категории (`GET /categories`) и не принимает `categoryId` при создании. Заменить на загрузку через `useQuery`, когда появится эндпоинт.
 - **`totals.ts`** — `monthlyExpenses(transactions)` (named export): чистая функция, сумма расходов (EXPENSE) за текущий календарный месяц.
+- **`AddTransactionDialog.tsx`** — `AddTransactionDialog` (default export). Модальное окно ручного добавления транзакции: само хранит open-состояние и рендерит триггер «+». Форма на `react-hook-form` + `zodResolver` (`createTransactionSchema`); поля Сумма, Описание, Тип (Расход/Доход) и Категория. Сохраняет через `useCreateTransaction`; категорию на сервер не отправляет (бэкенд её не принимает).
 
 #### `src/components/`
 
@@ -89,10 +98,13 @@ budget-web/
 
 - **`button.tsx`** — `Button` (named export) и `buttonVariants`. Компонент кнопки shadcn/ui: варианты (`default`, `outline`, `secondary`, `ghost`, `destructive`, `link`) и размеры через `class-variance-authority`. Поддерживает `asChild` (рендер как дочерний элемент через Radix `Slot`).
 - **`input.tsx`** — `Input` (named export). Стилизованное текстовое поле shadcn/ui (обёртка над `<input>` с классами темы). Используется в формах, например на странице входа.
+- **`label.tsx`** — `Label` (named export). Подпись к полю формы (обёртка над Radix `Label`). Используется в форме добавления транзакции.
+- **`dialog.tsx`** — модальное окно shadcn/ui поверх Radix `Dialog` (named exports `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogFooter`, `DialogClose`, `DialogDescription`, `DialogOverlay`, `DialogPortal`). Используется в `AddTransactionDialog`.
+- **`select.tsx`** — выпадающий список shadcn/ui поверх Radix `Select` (named exports `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`, `SelectGroup`, `SelectLabel`, `SelectSeparator` и др.). Используется для полей Тип и Категория в `AddTransactionDialog`.
 
 #### `src/pages/`
 
-- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`).
+- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). В шапке ленты — `AddTransactionDialog` (кнопка «+» для ручного ввода).
 - **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLogin`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
 - **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница настроек. Сейчас заглушка.
 
