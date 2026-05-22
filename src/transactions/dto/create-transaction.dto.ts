@@ -1,5 +1,6 @@
 import {
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -19,4 +20,9 @@ export class CreateTransactionDto {
 
   @IsIn(['INCOME', 'EXPENSE'])
   type!: 'INCOME' | 'EXPENSE';
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  categoryId?: number;
 }

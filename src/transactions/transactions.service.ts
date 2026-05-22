@@ -11,13 +11,19 @@ const MAX_LIMIT = 100;
 export class TransactionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(userId: number, dto: CreateTransactionDto) {
+  async create(userId: number, dto: CreateTransactionDto) {
+    if (dto.categoryId !== undefined) {
+      await this.assertCategoryOwned(userId, dto.categoryId);
+    }
     return this.prisma.transaction.create({
       data: {
         amount: dto.amount,
         description: dto.description,
         type: dto.type,
         user: { connect: { id: userId } },
+        ...(dto.categoryId !== undefined && {
+          category: { connect: { id: dto.categoryId } },
+        }),
       },
     });
   }
@@ -45,6 +51,9 @@ export class TransactionsService {
   }
 
   async update(userId: number, id: number, dto: UpdateTransactionDto) {
+    if (dto.categoryId !== undefined) {
+      await this.assertCategoryOwned(userId, dto.categoryId);
+    }
     const result = await this.prisma.transaction.updateMany({
       where: { id, userId },
       data: dto,
@@ -72,6 +81,15 @@ export class TransactionsService {
         throw new NotFoundException(`Transaction with id ${id} not found`);
       }
       throw error;
+    }
+  }
+
+  private async assertCategoryOwned(userId: number, categoryId: number) {
+    const category = await this.prisma.category.findFirst({
+      where: { id: categoryId, userId },
+    });
+    if (!category) {
+      throw new NotFoundException(`Category with id ${categoryId} not found`);
     }
   }
 }
