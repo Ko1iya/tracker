@@ -1,3 +1,4 @@
+/// <reference types="multer" />
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -82,6 +83,23 @@ export class TransactionsService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Голосовой ввод траты. Пока — заглушка: принимает аудиофайл и возвращает
+   * его метаданные. На Этапе 3 здесь появится цепочка Whisper (аудио → текст)
+   * → LLM (текст → JSON) → сохранение транзакции в БД.
+   */
+  createFromVoice(userId: number, file: Express.Multer.File) {
+    return {
+      message: 'Аудио получено. AI-распознавание ещё не подключено.',
+      userId,
+      file: {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+      },
+    };
   }
 
   private async assertCategoryOwned(userId: number, categoryId: number) {

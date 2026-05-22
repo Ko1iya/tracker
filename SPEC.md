@@ -17,7 +17,7 @@ budget-api/
     ├── main.ts                 # Точка входа: bootstrap NestJS приложения
     ├── app.module.ts           # Корневой module: импортирует PrismaModule и TransactionsModule, регистрирует AppController/AppService
     ├── app.controller.ts       # Базовый controller — GET / возвращает приветствие
-    ├── app.service.ts          # Возвращает строку 'Hello World!!' (placeholder)
+    ├── app.service.ts          # Возвращает строку 'Hello World!!'
     ├── prisma/
     │   ├── prisma.module.ts    # NestJS module: провайдит и экспортирует PrismaService для других модулей
     │   └── prisma.service.ts   # Wrapper над PrismaClient: connect/disconnect на lifecycle hooks
@@ -77,7 +77,7 @@ budget-api/
 - **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)`, включает CORS (`enableCors` для origin `http://localhost:5173` — Vite-дев-сервер фронта), регистрирует глобальный `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) и слушает `process.env.PORT ?? 3000`.
 - **`app.module.ts`** — корневой `@Module`. Импортирует `ConfigModule.forRoot({ isGlobal: true })`, `PrismaModule`, `UsersModule`, `AuthModule`, `TransactionsModule` и `CategoriesModule`, регистрирует `AppController`, провайдит `AppService`.
 - **`app.controller.ts`** — `AppController` без префикса. Один endpoint `GET /` → `appService.getHello()`.
-- **`app.service.ts`** — `AppService.getHello()` возвращает строку `'Hello World!!'`. Placeholder из стартового шаблона NestJS.
+- **`app.service.ts`** — `AppService.getHello()` возвращает строку `'Hello World!!'`.
 
 #### `src/prisma/`
 
@@ -104,8 +104,8 @@ budget-api/
 #### `src/transactions/`
 
 - **`transactions.module.ts`** — `TransactionsModule`. Импортирует `PrismaModule`, регистрирует `TransactionsController` и `TransactionsService`.
-- **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Целиком закрыт `@UseGuards(JwtAuthGuard)` — все методы требуют валидный JWT. `userId` достаётся из токена через `@CurrentUser()` и пробрасывается в сервис. Пять методов: `create` (POST), `findAll` (GET, с query `limit`/`offset` через `ParseIntPipe({ optional: true })`), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Параметр `:id` валидируется `ParseIntPipe`.
-- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Все методы принимают `userId` первым параметром и фильтруют/связывают по нему. Реализованы: `create(userId, dto)` (`prisma.transaction.create` со связыванием `user.connect`; при заданном `dto.categoryId` — `category.connect`), `findAll(userId, limit?, offset?)` (`findMany` с `where: { userId }`, `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `findOne(userId, id)` (`findFirst` с `where: { id, userId }`; null → `NotFoundException`), `update(userId, id, dto)` (`updateMany` с `where: { id, userId }` для проверки владения; `count === 0` → `NotFoundException`, иначе возвращает обновлённую запись через `findUnique`), `remove(userId, id)` (`deleteMany` с `where: { id, userId }` — атомарная проверка владения; `count === 0` → `NotFoundException`). Приватный `assertCategoryOwned(userId, categoryId)` — проверяет, что категория принадлежит пользователю (иначе `NotFoundException`); вызывается в `create`/`update`, когда передан `categoryId`. **Внешняя интеграция:** Prisma Client.
+- **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Целиком закрыт `@UseGuards(JwtAuthGuard)` — все методы требуют валидный JWT. `userId` достаётся из токена через `@CurrentUser()` и пробрасывается в сервис. Методы: `create` (POST), `createFromVoice` (POST `/voice` — приём аудио через `FileInterceptor('audio')`, валидация `ParseFilePipe`: размер ≤ 1 МБ, mime `audio/*`), `findAll` (GET, с query `limit`/`offset` через `ParseIntPipe({ optional: true })`), `findOne` (GET :id), `update` (PATCH :id), `remove` (DELETE :id). Параметр `:id` валидируется `ParseIntPipe`. **Внешняя интеграция:** `multer` (через `@nestjs/platform-express`, memory storage по умолчанию).
+- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`. Все методы принимают `userId` первым параметром и фильтруют/связывают по нему. Реализованы: `create(userId, dto)` (`prisma.transaction.create` со связыванием `user.connect`; при заданном `dto.categoryId` — `category.connect`), `findAll(userId, limit?, offset?)` (`findMany` с `where: { userId }`, `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `findOne(userId, id)` (`findFirst` с `where: { id, userId }`; null → `NotFoundException`), `update(userId, id, dto)` (`updateMany` с `where: { id, userId }` для проверки владения; `count === 0` → `NotFoundException`, иначе возвращает обновлённую запись через `findUnique`), `remove(userId, id)` (`deleteMany` с `where: { id, userId }` — атомарная проверка владения; `count === 0` → `NotFoundException`), `createFromVoice(userId, file)` (**заглушка Этапа 3**: возвращает метаданные принятого аудиофайла; место для будущей цепочки Whisper → LLM → сохранение). Приватный `assertCategoryOwned(userId, categoryId)` — проверяет, что категория принадлежит пользователю (иначе `NotFoundException`); вызывается в `create`/`update`, когда передан `categoryId`. **Внешняя интеграция:** Prisma Client.
 - **`dto/create-transaction.dto.ts`** — `CreateTransactionDto`. Поля с валидацией: `amount` (`@IsNumber({ maxDecimalPlaces: 2 })`, `@IsPositive`), `description?` (`@IsOptional`, `@IsString`, `@MaxLength(255)`), `type` (`@IsIn(['INCOME', 'EXPENSE'])`), `categoryId?` (`@IsOptional`, `@IsInt`, `@IsPositive`). `userId` в DTO **нет** — берётся из JWT.
 - **`dto/update-transaction.dto.ts`** — `UpdateTransactionDto extends PartialType(CreateTransactionDto)`. Все поля опциональны (через `@nestjs/mapped-types`), валидация наследуется.
 - **`entities/transaction.entity.ts`** — `class Transaction {}`. Пустая заглушка от `nest g resource`, не используется (модель транзакции описана в `schema.prisma`).
@@ -121,15 +121,16 @@ budget-api/
 
 ## API Routes
 
-| Method | Route               | Описание                                                                                                             | Файл                         | Статус                |
-| ------ | ------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------- |
-| GET    | `/`                 | Возвращает строку-приветствие (`Hello World!!`)                                                                      | `app.controller.ts`          | реализован, публичный |
-| POST   | `/auth/register`    | Регистрация по `RegisterDto`. Возвращает `{ accessToken, user }`. 409 если email занят                               | `auth.controller.ts`         | реализован, публичный |
-| POST   | `/auth/login`       | Логин по `LoginDto`. Возвращает `{ accessToken, user }`. 401 при неверной паре                                       | `auth.controller.ts`         | реализован, публичный |
-| GET    | `/categories`       | Список категорий текущего пользователя, сортировка по `title` ASC                                                    | `categories.controller.ts`   | реализован            |
-| POST   | `/categories`       | Создать категорию по `CreateCategoryDto` (поле `title`). 409, если у пользователя уже есть категория с таким `title` | `categories.controller.ts`   | реализован            |
-| POST   | `/transactions`     | Создать транзакцию по `CreateTransactionDto` (опц. `categoryId` — 404, если категория чужая/не существует)           | `transactions.controller.ts` | реализован            |
-| GET    | `/transactions`     | Список транзакций, сортировка по `date` DESC. Query: `limit` (default 50, max 100), `offset` (default 0)             | `transactions.controller.ts` | реализован            |
-| GET    | `/transactions/:id` | Получить транзакцию по id. 404, если нет/чужая                                                                       | `transactions.controller.ts` | реализован            |
-| PATCH  | `/transactions/:id` | Обновить транзакцию по id. 404, если нет/чужая                                                                       | `transactions.controller.ts` | реализован            |
-| DELETE | `/transactions/:id` | Удалить транзакцию по id. 404, если нет в БД                                                                         | `transactions.controller.ts` | реализован            |
+| Method | Route                 | Описание                                                                                                             | Файл                         | Статус                |
+| ------ | --------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------- |
+| GET    | `/`                   | Возвращает строку-приветствие (`Hello World!!`)                                                                      | `app.controller.ts`          | реализован, публичный |
+| POST   | `/auth/register`      | Регистрация по `RegisterDto`. Возвращает `{ accessToken, user }`. 409 если email занят                               | `auth.controller.ts`         | реализован, публичный |
+| POST   | `/auth/login`         | Логин по `LoginDto`. Возвращает `{ accessToken, user }`. 401 при неверной паре                                       | `auth.controller.ts`         | реализован, публичный |
+| GET    | `/categories`         | Список категорий текущего пользователя, сортировка по `title` ASC                                                    | `categories.controller.ts`   | реализован            |
+| POST   | `/categories`         | Создать категорию по `CreateCategoryDto` (поле `title`). 409, если у пользователя уже есть категория с таким `title` | `categories.controller.ts`   | реализован            |
+| POST   | `/transactions`       | Создать транзакцию по `CreateTransactionDto` (опц. `categoryId` — 404, если категория чужая/не существует)           | `transactions.controller.ts` | реализован            |
+| POST   | `/transactions/voice` | Приём аудиофайла (поле формы `audio`, ≤ 1 МБ, mime `audio/*`). Пока заглушка — возвращает метаданные файла, без AI  | `transactions.controller.ts` | заглушка (Этап 3)     |
+| GET    | `/transactions`       | Список транзакций, сортировка по `date` DESC. Query: `limit` (default 50, max 100), `offset` (default 0)             | `transactions.controller.ts` | реализован            |
+| GET    | `/transactions/:id`   | Получить транзакцию по id. 404, если нет/чужая                                                                       | `transactions.controller.ts` | реализован            |
+| PATCH  | `/transactions/:id`   | Обновить транзакцию по id. 404, если нет/чужая                                                                       | `transactions.controller.ts` | реализован            |
+| DELETE | `/transactions/:id`   | Удалить транзакцию по id. 404, если нет в БД                                                                         | `transactions.controller.ts` | реализован            |
