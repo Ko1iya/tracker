@@ -58,8 +58,7 @@ budget-api/
     └── llm/
         ├── llm.module.ts                           # Изолирует выбор LLM-провайдера за абстракцией TransactionParser (сейчас Gemini)
         ├── transaction-parser.ts                   # Абстракция парсера голосовых трат + тип ParsedTransaction
-        ├── gemini.parser.ts                        # Боевой парсер на Google Gemini (structured JSON output)
-        └── stub.parser.ts                          # Запасная заглушка парсера (эвристика без сети) для офлайн-тестов
+        └── gemini.parser.ts                        # Боевой парсер на Google Gemini (structured JSON output)
 ```
 
 ### Описание файлов
@@ -124,10 +123,9 @@ budget-api/
 
 #### `src/llm/`
 
-- **`llm.module.ts`** — `LlmModule`. Провайдит абстракцию `TransactionParser` через `{ provide: TransactionParser, useClass: GeminiTransactionParser }` и **экспортирует** её. Точка переключения LLM-провайдера: меняешь `useClass` (напр. обратно на `StubTransactionParser` для офлайн-тестов); для fallback из нескольких провайдеров сюда подставляется композитный парсер.
+- **`llm.module.ts`** — `LlmModule`. Провайдит абстракцию `TransactionParser` через `{ provide: TransactionParser, useClass: GeminiTransactionParser }` и **экспортирует** её. Точка переключения LLM-провайдера: меняешь `useClass`; для fallback из нескольких провайдеров сюда подставляется композитный парсер.
 - **`transaction-parser.ts`** — абстрактный класс `TransactionParser` (служит и типом, и DI-токеном) с методом `parse(text, categoryTitles): Promise<ParsedTransaction>`. Тип `ParsedTransaction` — узкий набор полей, извлекаемых из текста: `amount`, `currency`, `description`, `type` (`INCOME`/`EXPENSE`), `category` (имя или null), `suggestedCategories` (string[]), `raw?` (сырой ответ провайдера, только для отладки). Поля `id`/`userId`/`date` намеренно отсутствуют — это серверные поля.
 - **`gemini.parser.ts`** — `GeminiTransactionParser extends TransactionParser` с injected `ConfigService`. Боевой парсер: дёргает `generateContent` модели `GEMINI_MODEL` (дефолт `gemini-2.5-flash`) со `systemInstruction` + structured output (`responseMimeType: application/json` + `responseSchema` по форме `ParsedTransaction`), затем `normalize` подстраховывает типы и кладёт сырой ответ в `raw` (для отладки). Нет ключа → 500; сбой API → 503; пустой/невалидный JSON → 502. **Внешняя интеграция:** Google Gemini API (`@google/genai`), читает `GEMINI_API_KEY`/`GEMINI_MODEL` через `ConfigService`.
-- **`stub.parser.ts`** — `StubTransactionParser extends TransactionParser`. Запасная реализация без сети (для офлайн-тестов): извлекает сумму регуляркой, тип по словам-маркерам, категорию — поиском названия в тексте; если совпадения нет, предлагает `['Прочее']`. Логирует предупреждение, что реальный LLM не подключён.
 
 ---
 
