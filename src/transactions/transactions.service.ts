@@ -3,6 +3,7 @@ import {
   BadGatewayException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -11,18 +12,26 @@ import { Prisma } from '@prisma/client';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { TransactionParser } from '../llm/transaction-parser';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
+
+// Сколько ждём решения пользователя по категории, прежде чем крон
+// авто-подтвердит предложение LLM.
+const AUTO_CONFIRM_DELAY_MS = 5 * 60 * 1000;
 
 const NEXARA_TRANSCRIBE_URL =
   'https://api.nexara.ru/api/v1/audio/transcriptions';
 
 @Injectable()
 export class TransactionsService {
+  private readonly logger = new Logger(TransactionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly parser: TransactionParser,
   ) {}
 
   async create(userId: number, dto: CreateTransactionDto) {
@@ -99,13 +108,136 @@ export class TransactionsService {
   }
 
   /**
-   * Голосовой ввод траты. Сейчас реализован Шаг 1 цепочки: аудио → текст
-   * через Nexara. Шаг 2 (LLM: текст → JSON) и Шаг 3 (сохранение в БД) —
-   * следующие под-блоки Этапа 3. Пока возвращаем распознанный текст.
+   * Голосовой ввод траты, вся цепочка Этапа 3:
+   *  1. аудио → текст (Nexara, `transcribe`);
+   *  2. текст → структура (LLM через `TransactionParser`);
+   *  3. сохранение в БД.
+   *
+   * Трата создаётся сразу — сумма и тип уже известны. Если LLM сопоставил
+   * категорию с существующей у пользователя, привязываем её сразу. Иначе
+   * транзакция остаётся без категории и получает дедлайн `autoConfirmAt`:
+   * до него пользователь может уточнить категорию через
+   * `PATCH /transactions/:id/category`, после — крон подставит предложение LLM.
    */
   async createFromVoice(userId: number, file: Express.Multer.File) {
     const text = await this.transcribe(file);
-    return { userId, text };
+
+    const categories = await this.prisma.category.findMany({
+      where: { userId },
+      select: { id: true, title: true },
+    });
+    const categoryTitles = categories.map((c) => c.title);
+    const parsed = await this.parser.parse(text, categoryTitles);
+
+    // Отладка голосового ввода (включается флагом DEBUG_VOICE). Помогает понять,
+    // почему выбрана та или иная категория: видны транскрипт, какие категории
+    // переданы в LLM и её сырой ответ. В БД эти данные не пишутся.
+    const debugEnabled = this.config.get<string>('DEBUG_VOICE') === 'true';
+    if (debugEnabled) {
+      this.logger.debug(
+        `voice | transcript="${text}" | categories=[${categoryTitles.join(', ')}] | llmRaw=${parsed.raw ?? '(нет)'}`,
+      );
+    }
+
+    // Сопоставляем название категории от LLM с категорией пользователя.
+    const matched =
+      parsed.category === null
+        ? undefined
+        : categories.find(
+            (c) => c.title.toLowerCase() === parsed.category!.toLowerCase(),
+          );
+
+    const transaction = await this.prisma.transaction.create({
+      data: {
+        amount: parsed.amount,
+        currency: parsed.currency,
+        description: parsed.description,
+        type: parsed.type,
+        user: { connect: { id: userId } },
+        ...(matched
+          ? { category: { connect: { id: matched.id } } }
+          : {
+              suggestedCategories: parsed.suggestedCategories,
+              autoConfirmAt: new Date(Date.now() + AUTO_CONFIRM_DELAY_MS),
+            }),
+      },
+    });
+
+    const response = this.withPendingFlag(transaction);
+    if (debugEnabled) {
+      return {
+        ...response,
+        _debug: {
+          transcript: text,
+          categories: categoryTitles,
+          llmRaw: parsed.raw ?? null,
+        },
+      };
+    }
+    return response;
+  }
+
+  /**
+   * Пользователь уточняет категорию pending-транзакции (или меняет уже
+   * проставленную). Категория ищется-или-создаётся по названию через `upsert`
+   * — это покрывает и «принять предложение LLM», и «ввести свою новую/старую».
+   * После привязки гасим дедлайн авто-подтверждения.
+   */
+  async setCategory(userId: number, id: number, categoryName: string) {
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { id, userId },
+    });
+    if (!transaction) {
+      throw new NotFoundException(`Transaction with id ${id} not found`);
+    }
+
+    const title = categoryName.trim();
+    const category = await this.prisma.category.upsert({
+      where: { userId_title: { userId, title } },
+      create: { title, user: { connect: { id: userId } } },
+      update: {},
+    });
+
+    const updated = await this.prisma.transaction.update({
+      where: { id },
+      data: {
+        category: { connect: { id: category.id } },
+        suggestedCategories: [],
+        autoConfirmAt: null,
+      },
+    });
+    return this.withPendingFlag(updated);
+  }
+
+  /**
+   * Фоновое авто-подтверждение. Вызывается кроном (см. `transactions.cron.ts`).
+   * Берёт все транзакции с истёкшим `autoConfirmAt`, подставляет первый
+   * вариант из `suggestedCategories` (создавая категорию при необходимости) и
+   * гасит дедлайн. Возвращает число обработанных записей — для лога.
+   */
+  async autoConfirmPending(): Promise<number> {
+    const due = await this.prisma.transaction.findMany({
+      where: { autoConfirmAt: { lte: new Date() } },
+    });
+
+    for (const tx of due) {
+      const suggestion = tx.suggestedCategories[0];
+      if (suggestion) {
+        await this.setCategory(tx.userId, tx.id, suggestion);
+      } else {
+        // Предлагать нечего — просто снимаем транзакцию с ожидания.
+        await this.prisma.transaction.update({
+          where: { id: tx.id },
+          data: { autoConfirmAt: null },
+        });
+      }
+    }
+    return due.length;
+  }
+
+  /** Добавляет к ответу вычисляемый флаг — категория ещё ожидает решения. */
+  private withPendingFlag<T extends { autoConfirmAt: Date | null }>(tx: T) {
+    return { ...tx, categoryPending: tx.autoConfirmAt !== null };
   }
 
   /**

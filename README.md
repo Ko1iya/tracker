@@ -88,11 +88,20 @@
 - [x] **Бэкенд: Работа с файлами**
   - [x] Настроить загрузку файлов в NestJS (использовать `Multer` для приема аудио).
   - [x] Создать эндпоинт `POST /transactions/voice` (принимает аудио ≤ 1 МБ, mime `audio/*`).
-- [ ] **Бэкенд: Интеграция распознавания и LLM**
+- [x] **Бэкенд: Интеграция распознавания и LLM**
   - [x] Зарегистрироваться и получить API Key (используем **Nexara** — российский Whisper-совместимый сервис; ключ в `.env` → `NEXARA_API_KEY`).
   - [x] Шаг 1: Интегрировать транскрибацию (аудио → текст). Реализовано через Nexara в `transactions.service.ts` (`transcribe`); endpoint возвращает `{ userId, text }`.
-  - [ ] Шаг 2: Написать системный Prompt для LLM (GPT-4o-mini / Claude). Пример: _"Ты финансовый помощник. Извлеки из текста сумму, валюту, категорию и описание. Верни строгий JSON..."_.
-  - [ ] Шаг 3: Написать логику сохранения полученного JSON в базу данных (через существующий `create()`).
+  - [x] Шаг 2: LLM-парсинг текста в JSON. Провайдер — **Google Gemini** (`GeminiTransactionParser`, модель из `GEMINI_MODEL`, дефолт `gemini-2.5-flash`; ключ `GEMINI_API_KEY` в `.env`). Абстракция `TransactionParser` (модуль `src/llm/`) позволяет переключить провайдера одной строкой `useClass`; заглушка `StubTransactionParser` оставлена для офлайн-тестов.
+    - [x] Контракт парсера: `TransactionParser.parse(text, categoryTitles)` → `ParsedTransaction`. На вход — текст траты + список **названий** категорий юзера, на выход — узкий объект.
+    - [x] Системный prompt: LLM работает **как парсер**, а не «финансовый помощник». На выход — **только** JSON-объект (через Gemini structured output: `responseMimeType` + `responseSchema`).
+    - [x] Набор полей `ParsedTransaction`: `amount`, `currency`, `description`, `type` (`INCOME`/`EXPENSE`), `category` (точное имя из списка юзера или `null`), `suggestedCategories`. Поля `id`, `userId`, `date` парсер **не возвращает** — это серверные поля (`id` от БД, `userId` из JWT, `date` = `now()`).
+  - [x] Шаг 3: Сохранение распарсенного JSON в БД. Категория сопоставляется по имени → `categoryId` (case-insensitive). Совпадение есть → привязываем сразу. Совпадения нет → см. умную категоризацию ниже.
+- [x] **Бэкенд: Умная категоризация (pending-флоу)**
+  - [x] Если LLM не нашёл подходящей категории, трата **всё равно создаётся сразу** (сумма/тип уже известны и считаются в бюджете) с `categoryId = null`. Уточняется только категория.
+  - [x] Схема: у `Transaction` добавлены `suggestedCategories String[]` (варианты от LLM; `[0]` — тот, что авто-применится) и `autoConfirmAt DateTime?` (дедлайн авто-подтверждения; `null` = категория уже решена). В API отдаётся вычисляемый флаг `categoryPending`.
+  - [x] `POST /transactions/voice` теперь возвращает **созданную транзакцию** + `suggestedCategories` + `categoryPending` (раньше отдавал просто `{ text }`).
+  - [x] Новый эндпоинт `PATCH /transactions/:id/category` (тело `{ categoryName }`): находит-или-создаёт категорию юзера (`prisma.category.upsert`), привязывает, гасит `autoConfirmAt`. Покрывает и «согласиться с предложением», и «ввести свою».
+  - [x] Фоновый крон (`@nestjs/schedule`, `@Cron(EVERY_MINUTE)` в отдельном `transactions.cron.ts`): если юзер молчит 5 минут, берёт `suggestedCategories[0]`, создаёт-или-привязывает категорию, гасит дедлайн. `ScheduleModule.forRoot()` подключён в `app.module.ts`.
 - [ ] **Фронтенд: Диктофон**
   - [ ] Реализовать кнопку "Микрофон" на главном экране.
   - [ ] Использовать `MediaRecorder API` для записи голоса в браузере.

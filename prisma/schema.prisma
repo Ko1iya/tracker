@@ -41,6 +41,10 @@ model Transaction {
   categoryId  Int?
   category    Category? @relation(fields: [categoryId], references: [id])
 
+ 
+  suggestedCategories String[]  @default([])
+  autoConfirmAt       DateTime?
+
   userId      Int
   user        User      @relation(fields: [userId], references: [id])
 }

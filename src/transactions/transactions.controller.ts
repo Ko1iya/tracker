@@ -20,6 +20,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
+import { SetCategoryDto } from './dto/set-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload';
@@ -71,6 +72,15 @@ export class TransactionsController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.transactionsService.findOne(user.id, id);
+  }
+
+  @Patch(':id/category')
+  setCategory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetCategoryDto,
+  ) {
+    return this.transactionsService.setCategory(user.id, id, dto.categoryName);
   }
 
   @Patch(':id')
