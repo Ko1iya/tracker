@@ -13,6 +13,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransactionParser } from '../llm/transaction-parser';
+import { normalizeCategoryTitle } from '../categories/normalize-title';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -191,7 +192,7 @@ export class TransactionsService {
       throw new NotFoundException(`Transaction with id ${id} not found`);
     }
 
-    const title = categoryName.trim();
+    const title = normalizeCategoryTitle(categoryName);
     const category = await this.prisma.category.upsert({
       where: { userId_title: { userId, title } },
       create: { title, user: { connect: { id: userId } } },

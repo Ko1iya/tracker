@@ -44,16 +44,15 @@ budget-api/
     │   ├── transactions.controller.ts              # REST endpoints (POST/GET/PATCH/DELETE /transactions)
     │   ├── transactions.service.ts                 # Бизнес-логика CRUD + голосовой ввод и pending-категории
     │   ├── transactions.cron.ts                    # Фоновый воркер: авто-подтверждение pending-категорий раз в минуту
-    │   ├── dto/
-    │   │   ├── create-transaction.dto.ts           # DTO для POST: amount, description, type, categoryId?
-    │   │   ├── update-transaction.dto.ts           # DTO для PATCH: PartialType от CreateTransactionDto
-    │   │   └── set-category.dto.ts                 # DTO для PATCH /:id/category: categoryName
-    │   └── entities/
-    │       └── transaction.entity.ts               # Пустой класс-заглушка (сгенерирован nest g resource, пока не используется)
+    │   └── dto/
+    │       ├── create-transaction.dto.ts           # DTO для POST: amount, description, type, categoryId?
+    │       ├── update-transaction.dto.ts           # DTO для PATCH: PartialType от CreateTransactionDto
+    │       └── set-category.dto.ts                 # DTO для PATCH /:id/category: categoryName
     ├── categories/
     │   ├── categories.module.ts                    # NestJS module для домена категорий
     │   ├── categories.controller.ts                # REST endpoints GET/POST /categories
     │   ├── categories.service.ts                   # Чтение и создание категорий пользователя через PrismaService
+    │   ├── normalize-title.ts                      # Нормализация названия категории перед записью
     │   └── dto/
     │       └── create-category.dto.ts              # DTO для POST: title
     └── llm/
@@ -84,7 +83,6 @@ budget-api/
 - **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)`, включает CORS (`enableCors` для origin `http://localhost:5173` — Vite-дев-сервер фронта), регистрирует глобальный `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) и слушает `process.env.PORT ?? 3000`.
 - **`app.module.ts`** — корневой `@Module`. Импортирует `ConfigModule.forRoot({ isGlobal: true })`, `ScheduleModule.forRoot()` (включает крон-задачи), `PrismaModule`, `UsersModule`, `AuthModule`, `TransactionsModule` и `CategoriesModule`, регистрирует `AppController`, провайдит `AppService`.
 - **`app.controller.ts`** — `AppController` без префикса. Один endpoint `GET /` → `appService.getHello()`.
-- **`app.service.ts`** — `AppService.getHello()` возвращает строку `'Hello World!!'`.
 
 #### `src/prisma/`
 
@@ -104,7 +102,6 @@ budget-api/
 - **`dto/register.dto.ts`** — `RegisterDto`. Поля: `email` (`@IsEmail`), `password` (`@IsString`, `@MinLength(8)`).
 - **`dto/login.dto.ts`** — `LoginDto`. Поля: `email` (`@IsEmail`), `password` (`@IsString`).
 - **`strategies/jwt.strategy.ts`** — `JwtStrategy extends PassportStrategy(Strategy)`. Извлекает токен из `Authorization: Bearer …`, проверяет подпись секретом из `JWT_SECRET`. `validate(payload)` → `AuthenticatedUser { id, email }`, которая ложится в `request.user`. **Внешняя интеграция:** `passport-jwt`.
-- **`guards/jwt-auth.guard.ts`** — `JwtAuthGuard extends AuthGuard('jwt')`. Вешается через `@UseGuards(JwtAuthGuard)` на контроллеры/методы — запросы без валидного JWT получают 401.
 - **`decorators/current-user.decorator.ts`** — `@CurrentUser()`. Параметр-декоратор, возвращающий `AuthenticatedUser` из `request.user` (заполняется `JwtStrategy.validate`).
 - **`types/jwt-payload.ts`** — типы `JwtPayload { sub: number; email: string }` (то, что подписываем в токен) и `AuthenticatedUser { id: number; email: string }` (то, что доступно в `req.user`).
 
@@ -112,18 +109,17 @@ budget-api/
 
 - **`transactions.module.ts`** — `TransactionsModule`. Импортирует `PrismaModule` и `LlmModule`, регистрирует `TransactionsController`, провайдит `TransactionsService` и `TransactionsCron`.
 - **`transactions.controller.ts`** — `TransactionsController` с префиксом `/transactions`. Целиком закрыт `@UseGuards(JwtAuthGuard)` — все методы требуют валидный JWT. `userId` достаётся из токена через `@CurrentUser()` и пробрасывается в сервис. Методы: `create` (POST), `createFromVoice` (POST `/voice` — приём аудио через `FileInterceptor('audio')`, валидация `ParseFilePipe`: размер ≤ 1 МБ, mime `audio/*`), `findAll` (GET, с query `limit`/`offset` через `ParseIntPipe({ optional: true })`), `findOne` (GET :id), `setCategory` (PATCH `:id/category` — тело `SetCategoryDto`), `update` (PATCH :id), `remove` (DELETE :id). Параметр `:id` валидируется `ParseIntPipe`. **Внешняя интеграция:** `multer` (через `@nestjs/platform-express`, memory storage по умолчанию).
-- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`, `ConfigService` и `TransactionParser` (LLM-абстракция). Все CRUD-методы принимают `userId` первым параметром и фильтруют/связывают по нему. Реализованы: `create(userId, dto)` (`prisma.transaction.create` со связыванием `user.connect`; при заданном `dto.categoryId` — `category.connect`), `findAll(userId, limit?, offset?)` (`findMany` с `where: { userId }`, `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `findOne(userId, id)` (`findFirst` с `where: { id, userId }`; null → `NotFoundException`), `update(userId, id, dto)` (`updateMany` с `where: { id, userId }`; `count === 0` → `NotFoundException`, иначе возвращает запись через `findUnique`), `remove(userId, id)` (`deleteMany` с `where: { id, userId }`; `count === 0` → `NotFoundException`), `createFromVoice(userId, file)` (**вся цепочка Этапа 3**: `transcribe` → `parser.parse` → сохранение; если LLM сматчил категорию пользователя — связывает сразу, иначе создаёт без категории с `suggestedCategories` и дедлайном `autoConfirmAt = now + 5 мин`; возвращает транзакцию с флагом `categoryPending`; при `DEBUG_VOICE=true` логирует транскрипт/категории/сырой ответ LLM и добавляет их в ответ полем `_debug`, в БД эти данные не пишутся), `setCategory(userId, id, categoryName)` (находит-или-создаёт категорию через `category.upsert` по ключу `userId_title`, привязывает, гасит `autoConfirmAt`; 404 если транзакция чужая), `autoConfirmPending()` (для крона: берёт транзакции с истёкшим `autoConfirmAt`, подставляет `suggestedCategories[0]` через `setCategory` либо просто снимает с ожидания; возвращает число обработанных). Приватные: `transcribe(file)` — отправляет `file.buffer` (Blob → FormData) в Nexara, читает `NEXARA_API_KEY` через `ConfigService` (нет ключа → 500; сеть упала → 503; не-OK/пустой ответ → 502); `assertCategoryOwned(userId, categoryId)` — проверка владения категорией (иначе `NotFoundException`); `withPendingFlag(tx)` — добавляет вычисляемый `categoryPending`. **Внешняя интеграция:** Prisma Client, Nexara Audio API (speech-to-text, `fetch`), LLM через `TransactionParser`.
+- **`transactions.service.ts`** — `TransactionsService` с injected `PrismaService`, `ConfigService` и `TransactionParser` (LLM-абстракция). Все CRUD-методы принимают `userId` первым параметром и фильтруют/связывают по нему. Реализованы: `create(userId, dto)` (`prisma.transaction.create` со связыванием `user.connect`; при заданном `dto.categoryId` — `category.connect`), `findAll(userId, limit?, offset?)` (`findMany` с `where: { userId }`, `orderBy: { date: 'desc' }`, дефолтный `limit=50`, максимум `100`), `findOne(userId, id)` (`findFirst` с `where: { id, userId }`; null → `NotFoundException`), `update(userId, id, dto)` (`updateMany` с `where: { id, userId }`; `count === 0` → `NotFoundException`, иначе возвращает запись через `findUnique`), `remove(userId, id)` (`deleteMany` с `where: { id, userId }`; `count === 0` → `NotFoundException`), `createFromVoice(userId, file)` (**вся цепочка Этапа 3**: `transcribe` → `parser.parse` → сохранение; если LLM сматчил категорию пользователя — связывает сразу, иначе создаёт без категории с `suggestedCategories` и дедлайном `autoConfirmAt = now + 5 мин`; возвращает транзакцию с флагом `categoryPending`; при `DEBUG_VOICE=true` логирует транскрипт/категории/сырой ответ LLM и добавляет их в ответ полем `_debug`, в БД эти данные не пишутся), `setCategory(userId, id, categoryName)` (upsert-ит категорию по ключу `userId_title`, привязывает её, гасит `autoConfirmAt`; 404 если транзакция чужая), `autoConfirmPending()` (для крона: берёт транзакции с истёкшим `autoConfirmAt`, подставляет `suggestedCategories[0]` через `setCategory` либо просто снимает с ожидания; возвращает число обработанных). Приватные: `transcribe(file)` — отправляет `file.buffer` (Blob → FormData) в Nexara, читает `NEXARA_API_KEY` через `ConfigService` (нет ключа → 500; сеть упала → 503; не-OK/пустой ответ → 502); `assertCategoryOwned(userId, categoryId)` — проверка владения категорией (иначе `NotFoundException`); `withPendingFlag(tx)` — добавляет вычисляемый `categoryPending`. **Внешняя интеграция:** Prisma Client, Nexara Audio API (speech-to-text, `fetch`), LLM через `TransactionParser`.
 - **`transactions.cron.ts`** — `TransactionsCron` с injected `TransactionsService`. Метод `autoConfirmPending` помечен `@Cron(CronExpression.EVERY_MINUTE)` — раз в минуту дёргает `TransactionsService.autoConfirmPending()` и логирует число авто-подтверждённых категорий. Расписание отделено от HTTP-сервиса. **Внешняя интеграция:** `@nestjs/schedule`.
 - **`dto/create-transaction.dto.ts`** — `CreateTransactionDto`. Поля с валидацией: `amount` (`@IsNumber({ maxDecimalPlaces: 2 })`, `@IsPositive`), `description?` (`@IsOptional`, `@IsString`, `@MaxLength(255)`), `type` (`@IsIn(['INCOME', 'EXPENSE'])`), `categoryId?` (`@IsOptional`, `@IsInt`, `@IsPositive`). `userId` в DTO **нет** — берётся из JWT.
 - **`dto/update-transaction.dto.ts`** — `UpdateTransactionDto extends PartialType(CreateTransactionDto)`. Все поля опциональны (через `@nestjs/mapped-types`), валидация наследуется.
 - **`dto/set-category.dto.ts`** — `SetCategoryDto`. Поле `categoryName` (`@IsString`, `@MinLength(1)`, `@MaxLength(50)`). Тело `PATCH /transactions/:id/category`.
-- **`entities/transaction.entity.ts`** — `class Transaction {}`. Пустая заглушка от `nest g resource`, не используется (модель транзакции описана в `schema.prisma`).
 
 #### `src/categories/`
 
 - **`categories.module.ts`** — `CategoriesModule`. Импортирует `PrismaModule`, регистрирует `CategoriesController` и `CategoriesService`.
 - **`categories.controller.ts`** — `CategoriesController` с префиксом `/categories`. Закрыт `@UseGuards(JwtAuthGuard)`. Методы: `findAll` (GET `/categories`), `create` (POST `/categories`, тело — `CreateCategoryDto`). `userId` берётся из токена через `@CurrentUser()`.
-- **`categories.service.ts`** — `CategoriesService` с injected `PrismaService`. Методы: `findAll(userId)` — `findMany` с `where: { userId }`, `orderBy: { title: 'asc' }`; `create(userId, dto)` — `prisma.category.create` со связыванием `user.connect`. **Внешняя интеграция:** Prisma Client.
+- **`categories.service.ts`** — `CategoriesService` с injected `PrismaService`. Методы: `findAll(userId)` — `findMany` с `where: { userId }`, `orderBy: { title: 'asc' }`; `create(userId, dto)` — `prisma.category.create` со связыванием `user.connect`; ловит P2002 → `ConflictException`. **Внешняя интеграция:** Prisma Client.
 - **`dto/create-category.dto.ts`** — `CreateCategoryDto`. Поле `title` (`@IsString`, `@MinLength(1)`, `@MaxLength(50)`).
 
 #### `src/llm/`
