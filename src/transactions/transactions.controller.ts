@@ -48,7 +48,10 @@ export class TransactionsController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: MAX_AUDIO_SIZE_BYTES }),
-          new FileTypeValidator({ fileType: /^audio\// }),
+          new FileTypeValidator({
+            skipMagicNumbersValidation: true,
+            fileType: /^audio\//,
+          }),
         ],
       }),
     )
