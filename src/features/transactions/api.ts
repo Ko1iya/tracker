@@ -13,6 +13,9 @@ export interface Transaction {
   type: TransactionType
   categoryId: number | null
   userId: number
+  suggestedCategories: string[]
+  autoConfirmAt: string | null
+  categoryPending?: boolean
 }
 
 // GET /transactions — список транзакций текущего пользователя (требует JWT).
@@ -35,5 +38,18 @@ export async function createTransaction(
   input: CreateTransactionInput,
 ): Promise<Transaction> {
   const { data } = await api.post<Transaction>("/transactions", input)
+  return data
+}
+
+// POST /transactions/voice — голосовой ввод (multipart/form-data, поле `audio`).
+// Бэкенд ограничивает размер 1 МБ и принимает только mime audio/*.
+
+export async function createTransactionFromVoice(
+  audio: Blob,
+  filename: string,
+): Promise<Transaction> {
+  const form = new FormData()
+  form.append("audio", audio, filename)
+  const { data } = await api.post<Transaction>("/transactions/voice", form)
   return data
 }

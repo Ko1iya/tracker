@@ -1,6 +1,7 @@
 import { useTransactions } from "@/features/transactions/hooks"
 import { monthlyExpenses } from "@/features/transactions/totals"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
+import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
 import { formatCurrency, formatDate } from "@/lib/format"
 
 function HomePage() {
@@ -27,7 +28,10 @@ function HomePage() {
       <div>
         <div className='mb-3 flex items-center justify-between gap-4'>
           <h1 className='text-lg font-semibold'>Лента расходов</h1>
-          <AddTransactionDialog />
+          <div className='flex items-center gap-2'>
+            <VoiceRecorderButton />
+            <AddTransactionDialog />
+          </div>
         </div>
         {transactions.length === 0 ? (
           <p className='text-muted-foreground'>Пока нет ни одной транзакции.</p>
