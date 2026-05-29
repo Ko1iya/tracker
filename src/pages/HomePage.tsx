@@ -1,6 +1,7 @@
 import { useTransactions } from "@/features/transactions/hooks"
 import { monthlyExpenses } from "@/features/transactions/totals"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
+import CategoryPendingBadge from "@/features/transactions/CategoryPendingBadge"
 import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
 import { formatCurrency, formatDate } from "@/lib/format"
 
@@ -40,26 +41,29 @@ function HomePage() {
             {transactions.map((t) => (
               <li
                 key={t.id}
-                className='flex items-center justify-between gap-4 rounded-md border border-gray-500/20 px-4 py-3'
+                className='rounded-md border border-gray-500/20 px-4 py-3'
               >
-                <div className='flex flex-col'>
-                  <span className='font-medium'>
-                    {t.description || "Без описания"}
-                  </span>
-                  <span className='text-sm text-muted-foreground'>
-                    {formatDate(t.date)}
+                <div className='flex items-center justify-between gap-4'>
+                  <div className='flex flex-col'>
+                    <span className='font-medium'>
+                      {t.description || "Без описания"}
+                    </span>
+                    <span className='text-sm text-muted-foreground'>
+                      {formatDate(t.date)}
+                    </span>
+                  </div>
+                  <span
+                    className={
+                      t.type === "INCOME"
+                        ? "font-semibold text-green-600"
+                        : "font-semibold"
+                    }
+                  >
+                    {t.type === "INCOME" ? "+" : "−"}
+                    {formatCurrency(t.amount, t.currency)}
                   </span>
                 </div>
-                <span
-                  className={
-                    t.type === "INCOME"
-                      ? "font-semibold text-green-600"
-                      : "font-semibold"
-                  }
-                >
-                  {t.type === "INCOME" ? "+" : "−"}
-                  {formatCurrency(t.amount, t.currency)}
-                </span>
+                {t.autoConfirmAt && <CategoryPendingBadge transaction={t} />}
               </li>
             ))}
           </ul>

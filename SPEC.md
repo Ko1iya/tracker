@@ -29,14 +29,15 @@ budget-web/
     │   │   ├── schema.ts      # zod-схема формы входа loginSchema + тип LoginFormValues
     │   │   └── hooks.ts       # useLogin (мутация входа), useLogout (разлогин)
     │   └── transactions/
-    │       ├── api.ts         # getTransactions(), createTransaction(), createTransactionFromVoice(); типы Transaction, TransactionType, CreateTransactionInput
+    │       ├── api.ts         # getTransactions(), createTransaction(), createTransactionFromVoice(), setTransactionCategory(); типы Transaction, TransactionType, CreateTransactionInput
     │       ├── keys.ts        # Реестр query-ключей TanStack Query (transactionKeys)
-    │       ├── hooks.ts       # useTransactions, useCreateTransaction, useCreateTransactionFromVoice (все с инвалидацией кеша ленты)
+    │       ├── hooks.ts       # useTransactions, useCreateTransaction, useCreateTransactionFromVoice, useSetTransactionCategory (все мутации инвалидируют кеш ленты)
     │       ├── schema.ts      # zod-схема формы создания createTransactionSchema + тип CreateTransactionFormValues
     │       ├── categories.ts  # Заглушка категорий CATEGORY_OPTIONS (бэкенд категории пока не принимает)
     │       ├── totals.ts      # monthlyExpenses — расходы за текущий месяц (чистая функция)
     │       ├── AddTransactionDialog.tsx # Модалка ручного добавления транзакции (форма + триггер «+»)
-    │       └── VoiceRecorderButton.tsx # Кнопка голосового ввода: MediaRecorder → POST /transactions/voice
+    │       ├── VoiceRecorderButton.tsx  # Кнопка голосового ввода: MediaRecorder → POST /transactions/voice
+    │       └── CategoryPendingBadge.tsx # Бейдж pending-категории + панель выбора (suggestedCategories / своя)
     ├── components/
     │   ├── Layout.tsx         # Визуальный каркас авторизованных страниц: навигация + <Outlet />
     │   ├── ProtectedRoute.tsx # Гард доступа: без JWT редиректит на /login
@@ -82,14 +83,15 @@ budget-web/
 
 #### `src/features/transactions/`
 
-- **`api.ts`** — функции запросов к budget-api (named exports). `getTransactions()` — `GET /transactions` (требует JWT), возвращает массив транзакций. `createTransaction(input)` — `POST /transactions` (требует JWT), создаёт транзакцию; `userId` бэкенд берёт из JWT, `currency`/`date` проставляет дефолтами. `createTransactionFromVoice(blob, filename)` — `POST /transactions/voice` (multipart, поле `audio`, требует JWT): отправляет записанное аудио, бэкенд транскрибирует и парсит LLM, возвращает уже созданную транзакцию. Типы `Transaction` (поле `amount` — строка, т.к. Prisma `Decimal`; плюс `suggestedCategories: string[]` и `autoConfirmAt: string | null` для pending-категории; опц. `categoryPending` — приходит только в ответах voice/PATCH), `TransactionType` (`INCOME` | `EXPENSE`) и `CreateTransactionInput` (`amount`, `type`, опц. `description` — без категории, бэкенд её пока не принимает).
+- **`api.ts`** — функции запросов к budget-api (named exports). `getTransactions()` — `GET /transactions` (требует JWT), возвращает массив транзакций. `createTransaction(input)` — `POST /transactions` (требует JWT), создаёт транзакцию; `userId` бэкенд берёт из JWT, `currency`/`date` проставляет дефолтами. `createTransactionFromVoice(blob, filename)` — `POST /transactions/voice` (multipart, поле `audio`, требует JWT): отправляет записанное аудио, бэкенд транскрибирует и парсит LLM, возвращает уже созданную транзакцию. `setTransactionCategory(id, categoryName)` — `PATCH /transactions/:id/category` (требует JWT): подтверждает категорию для pending-транзакции (бэк найдёт-или-создаст категорию по имени, гасит `autoConfirmAt`). Типы `Transaction` (поле `amount` — строка, т.к. Prisma `Decimal`; плюс `suggestedCategories: string[]` и `autoConfirmAt: string | null` для pending-категории; опц. `categoryPending` — приходит только в ответах voice/PATCH), `TransactionType` (`INCOME` | `EXPENSE`) и `CreateTransactionInput` (`amount`, `type`, опц. `description` — без категории, бэкенд её пока не принимает).
 - **`keys.ts`** — `transactionKeys` (named export), реестр query-ключей TanStack Query. Централизует ключи кеша, чтобы чтение и инвалидации (после создания) использовали одни и те же значения.
-- **`hooks.ts`** — `useTransactions`, `useCreateTransaction`, `useCreateTransactionFromVoice` (named exports). `useTransactions` — чтение списка через `useQuery` под ключом `transactionKeys.all`. `useCreateTransaction` — мутация ручного создания. `useCreateTransactionFromVoice` — мутация голосового ввода (на вход `{ audio, filename }`). Обе мутации после успеха инвалидируют `transactionKeys.all`, чтобы лента сама перезапросилась.
+- **`hooks.ts`** — `useTransactions`, `useCreateTransaction`, `useCreateTransactionFromVoice`, `useSetTransactionCategory` (named exports). `useTransactions` — чтение списка через `useQuery` под ключом `transactionKeys.all`. `useCreateTransaction` — мутация ручного создания. `useCreateTransactionFromVoice` — мутация голосового ввода (на вход `{ audio, filename }`). `useSetTransactionCategory` — мутация подтверждения категории (на вход `{ id, categoryName }`). Все мутации после успеха инвалидируют `transactionKeys.all`, чтобы лента сама перезапросилась.
 - **`schema.ts`** — `createTransactionSchema` (zod) и выводимый тип `CreateTransactionFormValues` (named exports). Клиентская валидация формы создания; поля `amount`/`description`/`type` синхронны с `CreateTransactionDto` бэкенда. `amount` приводится из строки `<input>` через `z.coerce`. `categoryId` — только для UI, на сервер не уходит.
 - **`categories.ts`** — `CATEGORY_OPTIONS` и тип `CategoryOption` (named exports). Захардкоженный список категорий — заглушка: budget-api пока не отдаёт категории (`GET /categories`) и не принимает `categoryId` при создании. Заменить на загрузку через `useQuery`, когда появится эндпоинт.
 - **`totals.ts`** — `monthlyExpenses(transactions)` (named export): чистая функция, сумма расходов (EXPENSE) за текущий календарный месяц.
 - **`AddTransactionDialog.tsx`** — `AddTransactionDialog` (default export). Модальное окно ручного добавления транзакции: само хранит open-состояние и рендерит триггер «+». Форма на `react-hook-form` + `zodResolver` (`createTransactionSchema`); поля Сумма, Описание, Тип (Расход/Доход) и Категория. Сохраняет через `useCreateTransaction`; категорию на сервер не отправляет (бэкенд её не принимает).
-- **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…») и ошибки доступа к микрофону; pending-категория транзакции пока специально не отображается.
+- **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…») и ошибки доступа к микрофону.
+- **`CategoryPendingBadge.tsx`** — `CategoryPendingBadge` (default export, prop `transaction: Transaction`). Бейдж «Категория уточняется…» с обратным отсчётом до `autoConfirmAt` (тикает раз в 30с). По клику разворачивается панель: чипсы из `suggestedCategories` (тап = принять предложение) + поле «Своя категория». Сабмит через `useSetTransactionCategory` (бэк гасит `autoConfirmAt`, после инвалидации ленты бейдж исчезает сам). Также исчезает, если за это время сработал крон-автопод­тверждения на бэке.
 
 #### `src/components/`
 
@@ -106,7 +108,7 @@ budget-web/
 
 #### `src/pages/`
 
-- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). В шапке ленты — `VoiceRecorderButton` (голосовой ввод) и `AddTransactionDialog` (кнопка «+» для ручного ввода).
+- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). В шапке ленты — `VoiceRecorderButton` (голосовой ввод) и `AddTransactionDialog` (кнопка «+» для ручного ввода). У карточек транзакций с активным `autoConfirmAt` под основной строкой рендерится `CategoryPendingBadge`.
 - **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLogin`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
 - **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница настроек. Сейчас заглушка.
 

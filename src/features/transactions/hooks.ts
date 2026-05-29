@@ -3,6 +3,7 @@ import {
   createTransaction,
   createTransactionFromVoice,
   getTransactions,
+  setTransactionCategory,
 } from "./api"
 import { transactionKeys } from "./keys"
 
@@ -39,6 +40,19 @@ export function useCreateTransactionFromVoice() {
   return useMutation({
     mutationFn: ({ audio, filename }: { audio: Blob; filename: string }) =>
       createTransactionFromVoice(audio, filename),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: transactionKeys.all })
+    },
+  })
+}
+
+// useSetTransactionCategory — мутация подтверждения категории для pending-
+export function useSetTransactionCategory() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, categoryName }: { id: number; categoryName: string }) =>
+      setTransactionCategory(id, categoryName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: transactionKeys.all })
     },

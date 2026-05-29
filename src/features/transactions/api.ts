@@ -53,3 +53,15 @@ export async function createTransactionFromVoice(
   const { data } = await api.post<Transaction>("/transactions/voice", form)
   return data
 }
+
+// PATCH /transactions/:id/category — подтверждаем категорию для pending-
+// транзакции. Имя категории (существующее или новое — бэк найдёт-или-создаст).
+export async function setTransactionCategory(
+  id: number,
+  categoryName: string,
+): Promise<Transaction> {
+  const { data } = await api.patch<Transaction>(`/transactions/${id}/category`, {
+    categoryName,
+  })
+  return data
+}
