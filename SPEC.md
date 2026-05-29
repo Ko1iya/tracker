@@ -62,7 +62,7 @@ budget-web/
 #### Корень
 
 - **`index.html`** — HTML-шаблон Vite. `<html lang="ru">`, `<title>Tracker — AI Budget App</title>`, контейнер `<div id="root">` и подключение модуля `/src/main.tsx`.
-- **`vite.config.ts`** — конфиг Vite. Плагины: `@vitejs/plugin-react` (Fast Refresh + JSX-трансформация) и `@tailwindcss/vite` (компиляция Tailwind CSS v4).
+- **`vite.config.ts`** — конфиг Vite. Плагины: `@vitejs/plugin-react` (Fast Refresh + JSX-трансформация) и `@tailwindcss/vite` (компиляция Tailwind CSS v4). `server.host: true` — dev-сервер слушает на всех сетевых интерфейсах (доступ с телефона по IP). `server.proxy` — запросы на `/api` проксируются на budget-api (`http://localhost:3000`) с отрезанием префикса `/api`; так фронт и API для браузера остаются одним origin (CORS не задействуется).
 
 #### `src/`
 
@@ -75,7 +75,7 @@ budget-web/
 
 - **`utils.ts`** — утилита `cn(...)` (named export): объединяет классы через `clsx` и снимает конфликты Tailwind через `tailwind-merge`. Используется всеми компонентами shadcn/ui.
 - **`token.ts`** — низкоуровневое хранилище JWT-токена в `localStorage` (named exports `getToken`, `setToken`, `clearToken`). Токен budget-api выдаёт на `POST /auth/login`; он нужен в заголовке `Authorization: Bearer <token>` для защищённых эндпоинтов. Слой `lib` не знает про фичу `auth` — наоборот, фича и axios-клиент пользуются этими функциями.
-- **`api.ts`** — `api` (named export), настроенный axios-инстанс к `budget-api`. `baseURL` из `import.meta.env.VITE_API_URL`. Request-перехватчик подставляет JWT из `token.ts` в заголовок `Authorization`; response-перехватчик при ответе `401` чистит токен и редиректит на `/login`.
+- **`api.ts`** — `api` (named export), настроенный axios-инстанс к `budget-api`. `baseURL` из `import.meta.env.VITE_API_URL` (= `/api`, проксируется dev-сервером Vite на бэкенд). Request-перехватчик подставляет JWT из `token.ts` в заголовок `Authorization`; response-перехватчик при ответе `401` чистит токен и редиректит на `/login`.
 - **`queryClient.ts`** — `queryClient` (named export), глобальный `QueryClient` (TanStack Query). Дефолтные опции: `staleTime` 60с, без рефетча по фокусу окна, один повтор при ошибке. Подключается в `main.tsx`.
 - **`format.ts`** — форматирование через встроенный `Intl` (named exports `formatCurrency`, `formatDate`). `formatCurrency(amount, currency)` — деньги в локали `ru-RU` (кеширует `Intl.NumberFormat` по валюте); `formatDate(date)` — дата вида «5 мая». `amount` принимается строкой/числом (с бэкенда приходит строкой из-за Prisma `Decimal`).
 

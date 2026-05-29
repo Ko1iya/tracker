@@ -2,8 +2,7 @@ import axios from "axios"
 import { clearToken, getToken } from "./token"
 
 // Единый axios-клиент для запросов к budget-api (NestJS).
-// baseURL берётся из .env (VITE_API_URL); все запросы строятся относительно него,
-// например api.get("/transactions") уйдёт на http://localhost:3000/transactions.
+// baseURL берётся из .env (VITE_API_URL = /api);
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 })
