@@ -3,10 +3,16 @@ import { monthlyExpenses } from "@/features/transactions/totals"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
 import CategoryPendingBadge from "@/features/transactions/CategoryPendingBadge"
 import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
+import { useCategories } from "@/features/categories/hooks"
 import { formatCurrency, formatDate } from "@/lib/format"
 
 function HomePage() {
   const { data, isLoading, isError } = useTransactions()
+  const { data: categories } = useCategories()
+
+  // Лента отдаёт только categoryId — название берём из справочника категорий.
+  const categoryTitle = (id: number | null) =>
+    id == null ? null : (categories?.find((c) => c.id === id)?.title ?? null)
 
   if (isLoading) {
     return <p className='text-muted-foreground'>Загружаем транзакции…</p>
@@ -50,6 +56,8 @@ function HomePage() {
                     </span>
                     <span className='text-sm text-muted-foreground'>
                       {formatDate(t.date)}
+                      {categoryTitle(t.categoryId) &&
+                        ` · ${categoryTitle(t.categoryId)}`}
                     </span>
                   </div>
                   <span

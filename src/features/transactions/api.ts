@@ -24,12 +24,13 @@ export async function getTransactions(): Promise<Transaction[]> {
   return data
 }
 
-// Тело запроса на создание. Совпадает с CreateTransactionDto бэкенда:
-// categoryId сюда не входит намеренно — budget-api его пока не принимает.
+// Тело запроса на создание. Совпадает с CreateTransactionDto бэкенда.
+
 export interface CreateTransactionInput {
   amount: number
   type: TransactionType
   description?: string
+  categoryId?: number
 }
 
 // POST /transactions — создаёт транзакцию у текущего пользователя (требует JWT).
@@ -60,8 +61,11 @@ export async function setTransactionCategory(
   id: number,
   categoryName: string,
 ): Promise<Transaction> {
-  const { data } = await api.patch<Transaction>(`/transactions/${id}/category`, {
-    categoryName,
-  })
+  const { data } = await api.patch<Transaction>(
+    `/transactions/${id}/category`,
+    {
+      categoryName,
+    },
+  )
   return data
 }
