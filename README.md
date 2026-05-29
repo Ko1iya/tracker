@@ -124,8 +124,7 @@
         `suggestedCategories` (один тап = принять предложение) + поле «Своя
         категория» (свободный ввод, `maxLength=50`).
   - [x] Сабмит — `PATCH /transactions/:id/category` (функция
-        `setTransactionCategory(id, categoryName)` в `features/transactions/api.ts`
-        + хук `useSetTransactionCategory` с инвалидацией `transactionKeys.all`).
+        `setTransactionCategory(id, categoryName)` в `features/transactions/api.ts` + хук `useSetTransactionCategory` с инвалидацией `transactionKeys.all`).
         Ответ бэка содержит привязанную категорию и `categoryPending=false`.
   - [x] Учтено авто-подтверждение от крона: бейдж завязан на `autoConfirmAt`;
         как только крон или PATCH его обнулят, после рефетча ленты бейдж
@@ -171,7 +170,7 @@
 **Цель:** Выкатить проект в интернет для реальных пользователей.
 
 - [ ] Арендовать VPS/VDS (например, на Timeweb, Selectel, DigitalOcean).
-- [ ] Настроить production базу данных (не Docker на локалке, а управляемую БД или надежный контейнер на сервере с бекапами).
+- [ ] Настроить production базу данных (не Docker на локалке, а управляемую БД или надежный контейнер на сервере с бекапами). Durability обязательна: PITR, реплика, снапшоты с ретеншном
 - [ ] Настроить CI/CD (GitHub Actions) для автоматического деплоя при пуше в `main`.
 - [ ] Прикрутить домен и SSL (HTTPS) сертификат (Nginx / Traefik).
 - [ ] Настроить сбор метрик и логов (чтобы видеть, как пользователи ошибаются или где API падает).
