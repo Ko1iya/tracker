@@ -60,8 +60,9 @@ export class OpenRouterTransactionParser extends TransactionParser {
     categoryTitles: string[],
   ): Promise<ParsedTransaction> {
     if (!this.client) {
+      this.logger.error('OPENROUTER_API_KEY не задан в окружении');
       throw new InternalServerErrorException(
-        'OPENROUTER_API_KEY не задан в окружении',
+        'Не удалось обработать запись. Попробуйте позже.',
       );
     }
 
@@ -83,11 +84,16 @@ export class OpenRouterTransactionParser extends TransactionParser {
       raw = completion.choices[0]?.message?.content;
     } catch (error) {
       this.logger.error(`OpenRouter API недоступна: ${String(error)}`);
-      throw new ServiceUnavailableException('LLM-сервис недоступен');
+      throw new ServiceUnavailableException(
+        'Сервис временно недоступен. Попробуйте позже.',
+      );
     }
 
     if (!raw) {
-      throw new BadGatewayException('OpenRouter вернул пустой ответ');
+      this.logger.error('OpenRouter вернул пустой ответ');
+      throw new BadGatewayException(
+        'Не удалось обработать запись. Попробуйте ещё раз.',
+      );
     }
 
     return this.normalize(raw);
@@ -99,7 +105,10 @@ export class OpenRouterTransactionParser extends TransactionParser {
     try {
       data = JSON.parse(raw) as Partial<ParsedTransaction>;
     } catch {
-      throw new BadGatewayException('OpenRouter вернул невалидный JSON');
+      this.logger.error(`OpenRouter вернул невалидный JSON: ${raw}`);
+      throw new BadGatewayException(
+        'Не удалось обработать запись. Попробуйте ещё раз.',
+      );
     }
 
     const type: ParsedTransactionType =

@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -140,6 +141,13 @@ export class TransactionsService {
       );
     }
 
+    // Защита от «пустой» надиктовки.
+    if (!(parsed.amount > 0)) {
+      throw new UnprocessableEntityException(
+        'Не разобрал сумму траты. Назови её вслух, например: «кофе 200 рублей».',
+      );
+    }
+
     // Сопоставляем название категории от LLM с категорией пользователя.
     const matched =
       parsed.category === null
@@ -249,8 +257,9 @@ export class TransactionsService {
   private async transcribe(file: Express.Multer.File): Promise<string> {
     const apiKey = this.config.get<string>('NEXARA_API_KEY');
     if (!apiKey) {
+      this.logger.error('NEXARA_API_KEY не задан в окружении');
       throw new InternalServerErrorException(
-        'NEXARA_API_KEY не задан в окружении',
+        'Не удалось обработать запись. Попробуйте позже.',
       );
     }
 
@@ -271,21 +280,32 @@ export class TransactionsService {
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,
       });
-    } catch {
+    } catch (error) {
       // Сеть упала / таймаут — внешний сервис недоступен.
-      throw new ServiceUnavailableException('Сервис распознавания недоступен');
+      this.logger.error(`Nexara недоступна: ${String(error)}`);
+      throw new ServiceUnavailableException(
+        'Сервис временно недоступен. Попробуйте позже.',
+      );
     }
 
     if (!res.ok) {
       const detail = await res.text();
-      throw new BadGatewayException(`Nexara вернула ${res.status}: ${detail}`);
+      this.logger.error(`Nexara вернула ${res.status}: ${detail}`);
+      throw new BadGatewayException(
+        'Не удалось распознать запись. Попробуйте ещё раз.',
+      );
     }
 
     const data = (await res.json()) as { text?: string };
-    if (!data.text) {
-      throw new BadGatewayException('Nexara вернула пустой ответ');
+
+    const text = data.text?.trim();
+    if (!text) {
+      this.logger.error('Nexara вернула пустой ответ');
+      throw new BadGatewayException(
+        'Не удалось распознать речь. Запишите ещё раз чуть чётче.',
+      );
     }
-    return data.text;
+    return text;
   }
 
   private async assertCategoryOwned(userId: number, categoryId: number) {
