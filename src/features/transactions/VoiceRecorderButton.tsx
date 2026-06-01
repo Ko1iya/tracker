@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Loader2, Mic, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useCreateTransactionFromVoice } from "./hooks"
 
 // Жёсткий потолок длительности — страховка от лимита 1 МБ на бэке. При
@@ -36,7 +37,17 @@ function extFromBlobType(type: string): string {
 // Кнопка голосового ввода. Тап — старт записи, повторный тап — стоп и
 // отправка blob на POST /transactions/voice. Пока идёт распознавание,
 // показывает «Распознаём…». При успехе мутация сама инвалидирует ленту.
-function VoiceRecorderButton() {
+//
+// fab — круглый icon-only вид для нижней панели (BottomNav): без текста,
+// ошибки всплывают над кнопкой (absolute), чтобы не обрезались фикс-панелью.
+// className задаёт базовый стиль круга (передаёт BottomNav для единообразия).
+function VoiceRecorderButton({
+  fab = false,
+  className,
+}: {
+  fab?: boolean
+  className?: string
+} = {}) {
   const mutation = useCreateTransactionFromVoice()
   const [isRecording, setIsRecording] = useState(false)
   const [permissionError, setPermissionError] = useState<string | null>(null)
@@ -131,6 +142,43 @@ function VoiceRecorderButton() {
     else void startRecording()
   }
 
+  const errorText = permissionError
+    ? permissionError
+    : mutation.isError
+      ? "Не удалось распознать. Попробуй ещё раз."
+      : null
+
+  // Круглый вид для нижней панели: только иконка, ошибки — всплывашкой сверху.
+  if (fab) {
+    return (
+      <div className='relative flex flex-col items-center'>
+        <button
+          type='button'
+          onClick={handleClick}
+          disabled={mutation.isPending}
+          aria-label='Добавить голосом'
+          className={cn(
+            className,
+            isRecording && "animate-pulse bg-destructive text-white",
+          )}
+        >
+          {mutation.isPending ? (
+            <Loader2 className='size-7 animate-spin' />
+          ) : isRecording ? (
+            <Square className='size-7' />
+          ) : (
+            <Mic className='size-7' />
+          )}
+        </button>
+        {errorText && (
+          <span className='absolute bottom-full mb-2 w-40 rounded-md bg-destructive px-2 py-1 text-center text-xs text-white shadow-lg'>
+            {errorText}
+          </span>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className='flex flex-col items-end gap-1'>
       <Button
@@ -158,14 +206,7 @@ function VoiceRecorderButton() {
         )}
       </Button>
 
-      {permissionError && (
-        <span className='text-xs text-destructive'>{permissionError}</span>
-      )}
-      {mutation.isError && (
-        <span className='text-xs text-destructive'>
-          Не удалось распознать. Попробуй ещё раз.
-        </span>
-      )}
+      {errorText && <span className='text-xs text-destructive'>{errorText}</span>}
     </div>
   )
 }

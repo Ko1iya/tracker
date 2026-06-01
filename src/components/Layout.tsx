@@ -1,14 +1,14 @@
 import { NavLink, Outlet } from "react-router-dom"
-import { useLogout } from "@/features/auth/hooks"
+import BottomNav from "./BottomNav"
 
+// Навигационные ссылки шапки скрыты на мобиле — там их роль играет BottomNav.
 const linkClass = ({ isActive }: { isActive: boolean }) =>
-  isActive ? "font-semibold" : "opacity-70 hover:opacity-100"
+  `hidden sm:inline ${isActive ? "font-semibold" : "opacity-70 hover:opacity-100"}`
 
 // Чисто визуальный каркас авторизованных страниц: шапка с навигацией + <Outlet />.
+// На мобиле навигация и действия живут в BottomNav; выход — внутри Профиля.
 // Проверку доступа делает ProtectedRoute выше по дереву роутов.
 function Layout() {
-  const logout = useLogout()
-
   return (
     <div className='flex min-h-svh flex-col'>
       <header className='flex items-center justify-between gap-4 border-b border-gray-500/30 px-5 py-3'>
@@ -18,20 +18,14 @@ function Layout() {
             Главная
           </NavLink>
           <NavLink to='/settings' className={linkClass}>
-            Настройки
+            Профиль
           </NavLink>
-          <button
-            type='button'
-            onClick={logout}
-            className='opacity-70 hover:opacity-100'
-          >
-            Выход
-          </button>
         </nav>
       </header>
-      <main className='flex-1 p-5'>
+      <main className='flex-1 p-5 pb-24 sm:pb-5'>
         <Outlet />
       </main>
+      <BottomNav />
     </div>
   )
 }

@@ -35,7 +35,8 @@ function HomePage() {
       <div>
         <div className='mb-3 flex items-center justify-between gap-4'>
           <h1 className='text-lg font-semibold'>Лента расходов</h1>
-          <div className='flex items-center gap-2'>
+          {/* На мобиле способы добавления живут в нижней панели (BottomNav) */}
+          <div className='hidden items-center gap-2 sm:flex'>
             <VoiceRecorderButton />
             <AddTransactionDialog />
           </div>

@@ -43,7 +43,8 @@ budget-web/
     │       ├── VoiceRecorderButton.tsx  # Кнопка голосового ввода: MediaRecorder → POST /transactions/voice
     │       └── CategoryPendingBadge.tsx # Бейдж pending-категории + панель выбора (suggestedCategories / своя)
     ├── components/
-    │   ├── Layout.tsx         # Визуальный каркас авторизованных страниц: навигация + <Outlet />
+    │   ├── Layout.tsx         # Визуальный каркас авторизованных страниц: шапка (десктоп) + <Outlet /> + BottomNav (мобайл)
+    │   ├── BottomNav.tsx      # Нижняя панель мобильной версии: слева Профиль, справа три способа добавить расход (вручную · голос · фото)
     │   ├── ProtectedRoute.tsx # Гард доступа: без JWT редиректит на /login
     │   └── ui/
     │       ├── button.tsx     # Компонент Button (shadcn/ui): варианты и размеры через cva
@@ -54,7 +55,7 @@ budget-web/
     └── pages/
         ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц
         ├── LoginPage.tsx      # Страница входа (форма на react-hook-form + zod), вне Layout
-        └── SettingsPage.tsx   # Страница настроек (заглушка)
+        └── SettingsPage.tsx   # Страница «Профиль»: настройки (заглушка) + кнопка выхода
 ```
 
 ### Описание файлов
@@ -98,14 +99,15 @@ budget-web/
 - **`hooks.ts`** — `useTransactions`, `useCreateTransaction`, `useCreateTransactionFromVoice`, `useSetTransactionCategory` (named exports). `useTransactions` — чтение списка через `useQuery` под ключом `transactionKeys.all`. `useCreateTransaction` — мутация ручного создания. `useCreateTransactionFromVoice` — мутация голосового ввода (на вход `{ audio, filename }`). `useSetTransactionCategory` — мутация подтверждения категории (на вход `{ id, categoryName }`). Все мутации после успеха инвалидируют `transactionKeys.all`, чтобы лента сама перезапросилась.
 - **`schema.ts`** — `createTransactionSchema` (zod) и тип `CreateTransactionFormValues` (named exports). Клиентская валидация формы создания; поля `amount`/`description`/`type` синхронны с `CreateTransactionDto` бэкенда (`amount` приводится из строки `<input>` через `z.coerce`). Категория задаётся одним из двух UI-полей: `categoryId` (id категории строкой — выбор радиокнопкой) либо `categoryInput` (название существующей/новой — ручной ввод); `superRefine` требует, чтобы было заполнено хотя бы одно. Готовый числовой `categoryId` собирает компонент.
 - **`totals.ts`** — `monthlyExpenses(transactions)` и `topCategoryIds(transactions, limit=5)` (named exports), чистые функции. `monthlyExpenses` — сумма расходов (EXPENSE) за текущий календарный месяц. `topCategoryIds` — id категорий, отсортированные по частоте использования в переданных транзакциях (от самой частой), срез до `limit`.
-- **`AddTransactionDialog.tsx`** — `AddTransactionDialog` (default export). Модальное окно ручного добавления транзакции: само хранит open-состояние и рендерит триггер «+». Форма на `react-hook-form` + `zodResolver` (`createTransactionSchema`); поля Сумма, Описание, Тип (Расход/Доход) и Категория (через `CategoryPicker`). Категории грузит через `useCategories`, частоты — через `useTransactions` + `topCategoryIds` (топ-частых для радиокнопок, fallback — первые из справочника); самая частая предвыбрана. Перед сохранением определяет `categoryId` (ручной ввод приоритетнее радиокнопки): по нормализованному имени ищет существующую, иначе создаёт через `useCreateCategory`. Сохраняет транзакцию через `useCreateTransaction`, передавая `categoryId`.
+- **`AddTransactionDialog.tsx`** — `AddTransactionDialog` (default export, опц. prop `trigger?: ReactNode`). Модальное окно ручного добавления транзакции: само хранит open-состояние. `trigger` заменяет элемент-триггер (например, круглая кнопка `BottomNav`); по умолчанию — кнопка «Добавить». Форма на `react-hook-form` + `zodResolver` (`createTransactionSchema`); поля Сумма, Описание, Тип (Расход/Доход) и Категория (через `CategoryPicker`). Категории грузит через `useCategories`, частоты — через `useTransactions` + `topCategoryIds` (топ-частых для радиокнопок, fallback — первые из справочника); самая частая предвыбрана. Перед сохранением определяет `categoryId` (ручной ввод приоритетнее радиокнопки): по нормализованному имени ищет существующую, иначе создаёт через `useCreateCategory`. Сохраняет транзакцию через `useCreateTransaction`, передавая `categoryId`.
 - **`CategoryPicker.tsx`** — `CategoryPicker` (default export). Controlled-поле выбора категории. Props: `frequent`/`categories` (`Category[]`), `categoryId`/`query` (текущий выбор) и `onChange`/`error`. Рендерит радиогруппу кнопок-чипов (топ-частых) и поле ручного ввода с кастомным дропдауном автодополнения по существующим категориям (фильтр по подстроке); если введённого имени нет — подсветка «будет создана новая категория». Радио и поле взаимоисключающи: выбор одного очищает другой.
-- **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…») и ошибки доступа к микрофону.
+- **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export, опц. пропы `fab?: boolean`, `className?: string`). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…») и ошибки доступа к микрофону. `fab` — круглый icon-only вид для `BottomNav` (стиль круга задаёт `className`, ошибки всплывают над кнопкой); без него — обычная кнопка с текстом.
 - **`CategoryPendingBadge.tsx`** — `CategoryPendingBadge` (default export, prop `transaction: Transaction`). Бейдж «Категория уточняется…» с обратным отсчётом до `autoConfirmAt` (тикает раз в 30с). По клику разворачивается панель: чипсы из `suggestedCategories` (тап = принять предложение) + поле «Своя категория». Сабмит через `useSetTransactionCategory` (бэк гасит `autoConfirmAt`, после инвалидации ленты бейдж исчезает сам). Также исчезает, если за это время сработал крон-автопод­тверждения на бэке.
 
 #### `src/components/`
 
-- **`Layout.tsx`** — `Layout` (default export). Визуальный каркас авторизованных страниц: шапка с `NavLink`-навигацией (Главная, Настройки) и кнопкой «Выход» (через `useLogout`); `<Outlet />` под вложенные страницы. Стили — Tailwind. Проверку доступа делает `ProtectedRoute` выше по дереву.
+- **`Layout.tsx`** — `Layout` (default export). Визуальный каркас авторизованных страниц: шапка с брендом и навигационными `NavLink` (Главная, Профиль), видимыми только на десктопе (`hidden sm:inline`). `<Outlet />` под вложенные страницы, снизу — `BottomNav` (мобильная навигация + действия). Выход вынесен на страницу «Профиль». Стили — Tailwind. Проверку доступа делает `ProtectedRoute` выше по дереву.
+- **`BottomNav.tsx`** — `BottomNav` (default export). Фиксированная у нижнего края панель мобильной версии (`sm:hidden`). Слева — круглая кнопка `NavLink` «Профиль» (`/settings`; активный маршрут подсвечивается акцентом). Справа — ряд из трёх круглых кнопок единого стиля для добавления расхода: «Вручную» (`trigger` для `AddTransactionDialog`), «Голос» (`VoiceRecorderButton` в режиме `fab`) и «Фото» (распознавание чека — задел, кнопка `disabled`). Учитывает `safe-area-inset-bottom`.
 - **`ProtectedRoute.tsx`** — `ProtectedRoute` (default export). Гард доступа: при отсутствии JWT-токена редиректит на `/login` (`<Navigate replace />`), иначе рендерит `<Outlet />`. Отделён от `Layout`, чтобы доступ и вёрстка были разными ответственностями.
 
 #### `src/components/ui/` (shadcn/ui)
@@ -118,9 +120,9 @@ budget-web/
 
 #### `src/pages/`
 
-- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). Через `useCategories` сопоставляет `categoryId` транзакции с названием категории и показывает его рядом с датой. В шапке ленты — `VoiceRecorderButton` (голосовой ввод) и `AddTransactionDialog` (кнопка «+» для ручного ввода). У карточек транзакций с активным `autoConfirmAt` под основной строкой рендерится `CategoryPendingBadge`.
+- **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). Через `useCategories` сопоставляет `categoryId` транзакции с названием категории и показывает его рядом с датой. В шапке ленты (только на десктопе, `hidden sm:flex`) — `VoiceRecorderButton` (голосовой ввод) и `AddTransactionDialog` (ручной ввод); на мобиле эти действия живут в `BottomNav`. У карточек транзакций с активным `autoConfirmAt` под основной строкой рендерится `CategoryPendingBadge`.
 - **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLogin`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
-- **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница настроек. Сейчас заглушка.
+- **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница «Профиль»: настройки приложения (пока заглушка) и кнопка «Выйти из аккаунта» (через `useLogout`). Выход перенесён сюда из шапки `Layout` — на мобиле в шапке навигации нет.
 
 ---
 
@@ -131,6 +133,6 @@ budget-web/
 | Path        | Страница/компонент | Описание                                        | Файл                       | Статус   |
 | ----------- | ------------------ | ----------------------------------------------- | -------------------------- | -------- |
 | `/`         | `HomePage`         | Лента расходов и сводка за месяц (внутри Layout, требует авторизации) | `src/pages/HomePage.tsx`   | готово   |
-| `/settings` | `SettingsPage`     | Настройки (внутри Layout, требует авторизации)  | `src/pages/SettingsPage.tsx` | заглушка |
+| `/settings` | `SettingsPage`     | Профиль: настройки (заглушка) + выход (внутри Layout, требует авторизации) | `src/pages/SettingsPage.tsx` | частично |
 | `/login`    | `LoginPage`        | Вход, отдельно от Layout (без навигации)        | `src/pages/LoginPage.tsx`  | готово   |
 | `*`         | `HomePage`         | Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную (без токена — на `/login`) | `src/App.tsx`              | готово   |

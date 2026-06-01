@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Plus } from "lucide-react"
@@ -29,8 +29,10 @@ import { createTransactionSchema } from "./schema"
 import { topCategoryIds } from "./totals"
 import CategoryPicker from "./CategoryPicker"
 
-// Модальное окно ручного добавления транзакции с триггером «+».
-function AddTransactionDialog() {
+// Модальное окно ручного добавления транзакции.
+// trigger — кастомный элемент-триггер (например, круглая кнопка нижней панели);
+// если не передан, рендерим дефолтную кнопку «Добавить».
+function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const createTx = useCreateTransaction()
   const createCat = useCreateCategory()
@@ -120,10 +122,12 @@ function AddTransactionDialog() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          Добавить
-        </Button>
+        {trigger ?? (
+          <Button>
+            <Plus />
+            Добавить
+          </Button>
+        )}
       </DialogTrigger>
 
       <DialogContent>
