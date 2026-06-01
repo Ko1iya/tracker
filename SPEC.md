@@ -51,7 +51,8 @@ budget-web/
     │       ├── input.tsx      # Компонент Input (shadcn/ui): стилизованное текстовое поле
     │       ├── label.tsx      # Компонент Label (shadcn/ui): подпись к полю формы
     │       ├── dialog.tsx     # Модальное окно (shadcn/ui, Radix Dialog): набор Dialog*-частей
-    │       └── select.tsx     # Выпадающий список (shadcn/ui, Radix Select): набор Select*-частей
+    │       ├── select.tsx     # Выпадающий список (shadcn/ui, Radix Select): набор Select*-частей
+    │       └── sonner.tsx     # Toaster (sonner): всплывающие тосты, монтируется в App
     └── pages/
         ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц
         ├── LoginPage.tsx      # Страница входа (форма на react-hook-form + zod), вне Layout
@@ -68,7 +69,7 @@ budget-web/
 #### `src/`
 
 - **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`, обёрнутый в `QueryClientProvider` (TanStack Query) с клиентом из `lib/queryClient.ts`. Импортирует глобальный `index.css`.
-- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно; закрытая зона (`/`, `/settings` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас).
+- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно; закрытая зона (`/`, `/settings` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас). Здесь же монтируется глобальный `<Toaster />` (sonner) для всплывающих уведомлений.
 - **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (preflight-сброс). Дальше — тема shadcn/ui: CSS-переменные дизайн-токенов (`--background`, `--primary` и т.д.) в `:root` и `.dark`, маппинг токенов в Tailwind через `@theme inline`, шрифт Inter (`@fontsource-variable/inter`), `@layer base` для базовых стилей `body`/`html`.
 - **`vite-env.d.ts`** — декларации типов окружения Vite. Подключает `vite/client` и типизирует `import.meta.env.VITE_API_URL` (базовый URL `budget-api`).
 
@@ -101,7 +102,7 @@ budget-web/
 - **`totals.ts`** — `monthlyExpenses(transactions)` и `topCategoryIds(transactions, limit=5)` (named exports), чистые функции. `monthlyExpenses` — сумма расходов (EXPENSE) за текущий календарный месяц. `topCategoryIds` — id категорий, отсортированные по частоте использования в переданных транзакциях (от самой частой), срез до `limit`.
 - **`AddTransactionDialog.tsx`** — `AddTransactionDialog` (default export, опц. prop `trigger?: ReactNode`). Модальное окно ручного добавления транзакции: само хранит open-состояние. `trigger` заменяет элемент-триггер (например, круглая кнопка `BottomNav`); по умолчанию — кнопка «Добавить». Форма на `react-hook-form` + `zodResolver` (`createTransactionSchema`); поля Сумма, Описание, Тип (Расход/Доход) и Категория (через `CategoryPicker`). Категории грузит через `useCategories`, частоты — через `useTransactions` + `topCategoryIds` (топ-частых для радиокнопок, fallback — первые из справочника); самая частая предвыбрана. Перед сохранением определяет `categoryId` (ручной ввод приоритетнее радиокнопки): по нормализованному имени ищет существующую, иначе создаёт через `useCreateCategory`. Сохраняет транзакцию через `useCreateTransaction`, передавая `categoryId`.
 - **`CategoryPicker.tsx`** — `CategoryPicker` (default export). Controlled-поле выбора категории. Props: `frequent`/`categories` (`Category[]`), `categoryId`/`query` (текущий выбор) и `onChange`/`error`. Рендерит радиогруппу кнопок-чипов (топ-частых) и поле ручного ввода с кастомным дропдауном автодополнения по существующим категориям (фильтр по подстроке); если введённого имени нет — подсветка «будет создана новая категория». Радио и поле взаимоисключающи: выбор одного очищает другой.
-- **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export, опц. пропы `fab?: boolean`, `className?: string`). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…») и ошибки доступа к микрофону. `fab` — круглый icon-only вид для `BottomNav` (стиль круга задаёт `className`, ошибки всплывают над кнопкой); без него — обычная кнопка с текстом.
+- **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export, опц. пропы `fab?: boolean`, `className?: string`). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…»); ошибки доступа к микрофону и сбой распознавания — всплывающим тостом (sonner). `fab` — круглый icon-only вид для `BottomNav` (стиль круга задаёт `className`); без него — обычная кнопка с текстом.
 - **`CategoryPendingBadge.tsx`** — `CategoryPendingBadge` (default export, prop `transaction: Transaction`). Бейдж «Категория уточняется…» с обратным отсчётом до `autoConfirmAt` (тикает раз в 30с). По клику разворачивается панель: чипсы из `suggestedCategories` (тап = принять предложение) + поле «Своя категория». Сабмит через `useSetTransactionCategory` (бэк гасит `autoConfirmAt`, после инвалидации ленты бейдж исчезает сам). Также исчезает, если за это время сработал крон-автопод­тверждения на бэке.
 
 #### `src/components/`
@@ -117,6 +118,7 @@ budget-web/
 - **`label.tsx`** — `Label` (named export). Подпись к полю формы (обёртка над Radix `Label`). Используется в форме добавления транзакции.
 - **`dialog.tsx`** — модальное окно shadcn/ui поверх Radix `Dialog` (named exports `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogFooter`, `DialogClose`, `DialogDescription`, `DialogOverlay`, `DialogPortal`). Используется в `AddTransactionDialog`.
 - **`select.tsx`** — выпадающий список shadcn/ui поверх Radix `Select` (named exports `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectItem`, `SelectGroup`, `SelectLabel`, `SelectSeparator` и др.). Используется для полей Тип и Категория в `AddTransactionDialog`.
+- **`sonner.tsx`** — `Toaster` (named export), тонкая обёртка над `Toaster` из `sonner` с дефолтами проекта (позиция сверху по центру, `richColors`, длительность 5с). Монтируется один раз в `App`; уведомления вызываются из любого места через `toast.error(...)` и т.п.
 
 #### `src/pages/`
 

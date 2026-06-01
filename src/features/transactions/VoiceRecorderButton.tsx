@@ -1,8 +1,25 @@
 import { useEffect, useRef, useState } from "react"
+import { isAxiosError } from "axios"
+import fixWebmDuration from "fix-webm-duration"
 import { Loader2, Mic, Square } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useCreateTransactionFromVoice } from "./hooks"
+
+// Достаём человекочитаемую причину сбоя запроса.
+function messageFromError(err: unknown): string {
+  if (isAxiosError(err)) {
+    const data = err.response?.data as
+      | { message?: string | string[] }
+      | undefined
+    const msg = data?.message
+    if (Array.isArray(msg)) return msg.join(". ")
+    if (typeof msg === "string" && msg) return msg
+    if (!err.response) return "Сервер недоступен. Проверь соединение."
+  }
+  return "Не удалось распознать. Попробуй ещё раз."
+}
 
 // Жёсткий потолок длительности — страховка от лимита 1 МБ на бэке. При
 // 48 kbps это ~360 КБ, с большим запасом.
@@ -38,8 +55,9 @@ function extFromBlobType(type: string): string {
 // отправка blob на POST /transactions/voice. Пока идёт распознавание,
 // показывает «Распознаём…». При успехе мутация сама инвалидирует ленту.
 //
-// fab — круглый icon-only вид для нижней панели (BottomNav): без текста,
-// ошибки всплывают над кнопкой (absolute), чтобы не обрезались фикс-панелью.
+// fab — круглый icon-only вид для нижней панели (BottomNav): без текста.
+// Ошибки (доступ к микрофону, сбой распознавания) показываются всплывающим
+// тостом (sonner), а не инлайном — поэтому fab возвращает чистую кнопку.
 // className задаёт базовый стиль круга (передаёт BottomNav для единообразия).
 function VoiceRecorderButton({
   fab = false,
@@ -50,12 +68,12 @@ function VoiceRecorderButton({
 } = {}) {
   const mutation = useCreateTransactionFromVoice()
   const [isRecording, setIsRecording] = useState(false)
-  const [permissionError, setPermissionError] = useState<string | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
   const autoStopRef = useRef<number | null>(null)
+  const startedAtRef = useRef<number>(0)
 
   // На размонтировании компонента отпускаем микрофон и сносим таймер, чтобы
   // не оставлять висящий getUserMedia-стрим (в браузере остаётся красная
@@ -69,20 +87,42 @@ function VoiceRecorderButton({
     }
   }, [])
 
+  // Сбой запроса распознавания — всплывашкой. mutation.error меняется один раз
+  // при провале, поэтому эффект сработает ровно на новой ошибке.
+  useEffect(() => {
+    if (mutation.isError) toast.error(messageFromError(mutation.error))
+  }, [mutation.isError, mutation.error])
+
   const startRecording = async () => {
-    setPermissionError(null)
     mutation.reset()
 
     if (typeof MediaRecorder === "undefined") {
-      setPermissionError("Браузер не поддерживает запись аудио.")
+      toast.error("Браузер не поддерживает запись аудио.")
+      return
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error(
+        "Микрофон работает только по https или localhost. Открой приложение так.",
+      )
       return
     }
 
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      setPermissionError("Нет доступа к микрофону. Разреши его в браузере.")
+    } catch (err) {
+      // Различаем причины: явный отказ, отсутствие микрофона, прочее.
+      const name = err instanceof DOMException ? err.name : ""
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        toast.error(
+          "Доступ к микрофону запрещён. Разреши его в настройках браузера.",
+        )
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        toast.error("Микрофон не найден.")
+      } else {
+        toast.error("Не удалось включить микрофон. Попробуй ещё раз.")
+      }
       return
     }
 
@@ -108,16 +148,28 @@ function VoiceRecorderButton({
       setIsRecording(false)
 
       const blobType = recorder.mimeType || picked?.mime || "audio/webm"
-      const blob = new Blob(chunksRef.current, { type: blobType })
+      const rawBlob = new Blob(chunksRef.current, { type: blobType })
       chunksRef.current = []
-      if (blob.size === 0) return
+      if (rawBlob.size === 0) return
 
       const ext = picked?.ext ?? extFromBlobType(blobType)
-      mutation.mutate({ audio: blob, filename: `voice.${ext}` })
+      const durationMs = Date.now() - startedAtRef.current
+
+      // MediaRecorder пишет webm без длительности в заголовке — Nexara читает
+      // её как 0 и отклоняет («минимальная длина 0.3 с»). Дописываем реальную
+      // длительность в контейнер. Для прочих форматов отправляем как есть.
+      const prepare = blobType.includes("webm")
+        ? fixWebmDuration(rawBlob, durationMs, { logger: false })
+        : Promise.resolve(rawBlob)
+
+      prepare.then((blob) => {
+        mutation.mutate({ audio: blob, filename: `voice.${ext}` })
+      })
     }
 
     recorderRef.current = recorder
     streamRef.current = stream
+    startedAtRef.current = Date.now()
     recorder.start()
     setIsRecording(true)
 
@@ -142,72 +194,55 @@ function VoiceRecorderButton({
     else void startRecording()
   }
 
-  const errorText = permissionError
-    ? permissionError
-    : mutation.isError
-      ? "Не удалось распознать. Попробуй ещё раз."
-      : null
-
-  // Круглый вид для нижней панели: только иконка, ошибки — всплывашкой сверху.
+  // Круглый вид для нижней панели: только иконка, ошибки — всплывающим тостом.
   if (fab) {
     return (
-      <div className='relative flex flex-col items-center'>
-        <button
-          type='button'
-          onClick={handleClick}
-          disabled={mutation.isPending}
-          aria-label='Добавить голосом'
-          className={cn(
-            className,
-            isRecording && "animate-pulse bg-destructive text-white",
-          )}
-        >
-          {mutation.isPending ? (
-            <Loader2 className='size-7 animate-spin' />
-          ) : isRecording ? (
-            <Square className='size-7' />
-          ) : (
-            <Mic className='size-7' />
-          )}
-        </button>
-        {errorText && (
-          <span className='absolute bottom-full mb-2 w-40 rounded-md bg-destructive px-2 py-1 text-center text-xs text-white shadow-lg'>
-            {errorText}
-          </span>
+      <button
+        type='button'
+        onClick={handleClick}
+        disabled={mutation.isPending}
+        aria-label='Добавить голосом'
+        className={cn(
+          className,
+          isRecording && "animate-pulse bg-destructive text-white",
         )}
-      </div>
+      >
+        {mutation.isPending ? (
+          <Loader2 className='size-7 animate-spin' />
+        ) : isRecording ? (
+          <Square className='size-7' />
+        ) : (
+          <Mic className='size-7' />
+        )}
+      </button>
     )
   }
 
   return (
-    <div className='flex flex-col items-end gap-1'>
-      <Button
-        type='button'
-        onClick={handleClick}
-        disabled={mutation.isPending}
-        variant={isRecording ? "destructive" : "outline"}
-        className={isRecording ? "animate-pulse" : ""}
-      >
-        {mutation.isPending ? (
-          <>
-            <Loader2 className='animate-spin' />
-            Распознаём…
-          </>
-        ) : isRecording ? (
-          <>
-            <Square />
-            Стоп
-          </>
-        ) : (
-          <>
-            <Mic />
-            Голосом
-          </>
-        )}
-      </Button>
-
-      {errorText && <span className='text-xs text-destructive'>{errorText}</span>}
-    </div>
+    <Button
+      type='button'
+      onClick={handleClick}
+      disabled={mutation.isPending}
+      variant={isRecording ? "destructive" : "outline"}
+      className={isRecording ? "animate-pulse" : ""}
+    >
+      {mutation.isPending ? (
+        <>
+          <Loader2 className='animate-spin' />
+          Распознаём…
+        </>
+      ) : isRecording ? (
+        <>
+          <Square />
+          Стоп
+        </>
+      ) : (
+        <>
+          <Mic />
+          Голосом
+        </>
+      )}
+    </Button>
   )
 }
 

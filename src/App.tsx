@@ -4,10 +4,12 @@ import ProtectedRoute from "./components/ProtectedRoute"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
 import SettingsPage from "./pages/SettingsPage"
+import { Toaster } from "./components/ui/sonner"
 
 function App() {
   return (
     <BrowserRouter>
+      <Toaster />
       <Routes>
         <Route path='/login' element={<LoginPage />} />
         {/* Закрытая зона: сначала гард ProtectedRoute, внутри — визуальный Layout */}
