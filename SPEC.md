@@ -56,9 +56,9 @@ budget-api/
     │   └── dto/
     │       └── create-category.dto.ts              # DTO для POST: title
     └── llm/
-        ├── llm.module.ts                           # Изолирует выбор LLM-провайдера за абстракцией TransactionParser (сейчас Gemini)
+        ├── llm.module.ts                           # Изолирует выбор LLM-провайдера за абстракцией TransactionParser (сейчас OpenRouter)
         ├── transaction-parser.ts                   # Абстракция парсера голосовых трат + тип ParsedTransaction
-        └── gemini.parser.ts                        # Боевой парсер на Google Gemini (structured JSON output)
+        └── openrouter.parser.ts                    # Боевой парсер на OpenRouter (OpenAI-совместимый API, JSON-ответ)
 ```
 
 ### Описание файлов
@@ -123,9 +123,9 @@ budget-api/
 
 #### `src/llm/`
 
-- **`llm.module.ts`** — `LlmModule`. Провайдит абстракцию `TransactionParser` через `{ provide: TransactionParser, useClass: GeminiTransactionParser }` и **экспортирует** её. Точка переключения LLM-провайдера: меняешь `useClass`; для fallback из нескольких провайдеров сюда подставляется композитный парсер.
+- **`llm.module.ts`** — `LlmModule`. Провайдит абстракцию `TransactionParser` через `{ provide: TransactionParser, useClass: OpenRouterTransactionParser }` и **экспортирует** её. Точка переключения LLM-провайдера: меняешь `useClass`; для fallback из нескольких провайдеров сюда подставляется композитный парсер.
 - **`transaction-parser.ts`** — абстрактный класс `TransactionParser` (служит и типом, и DI-токеном) с методом `parse(text, categoryTitles): Promise<ParsedTransaction>`. Тип `ParsedTransaction` — узкий набор полей, извлекаемых из текста: `amount`, `currency`, `description`, `type` (`INCOME`/`EXPENSE`), `category` (имя или null), `suggestedCategories` (string[]), `raw?` (сырой ответ провайдера, только для отладки). Поля `id`/`userId`/`date` намеренно отсутствуют — это серверные поля.
-- **`gemini.parser.ts`** — `GeminiTransactionParser extends TransactionParser` с injected `ConfigService`. Боевой парсер: дёргает `generateContent` модели `GEMINI_MODEL` (дефолт `gemini-2.5-flash`) со `systemInstruction` + structured output (`responseMimeType: application/json` + `responseSchema` по форме `ParsedTransaction`), затем `normalize` подстраховывает типы и кладёт сырой ответ в `raw` (для отладки). Нет ключа → 500; сбой API → 503; пустой/невалидный JSON → 502. **Внешняя интеграция:** Google Gemini API (`@google/genai`), читает `GEMINI_API_KEY`/`GEMINI_MODEL` через `ConfigService`.
+- **`openrouter.parser.ts`** — `OpenRouterTransactionParser extends TransactionParser` с injected `ConfigService`. Боевой парсер: ходит в OpenRouter через `openai` SDK как drop-in (`baseURL: https://openrouter.ai/api/v1`, OpenAI-совместимый `chat.completions.create`) модели `OPENROUTER_MODEL` (дефолт `xiaomi/mimo-v2.5`) с `system`-инструкцией (форма JSON описана прямо в промпте) и `response_format: { type: 'json_object' }`, затем `normalize` подстраховывает типы и кладёт сырой ответ в `raw` (для отладки). Нет ключа → 500; сбой API → 503; пустой/невалидный JSON → 502. **Внешняя интеграция:** OpenRouter API (`openai` SDK), читает `OPENROUTER_API_KEY`/`OPENROUTER_MODEL` через `ConfigService`.
 
 ---
 
@@ -139,7 +139,7 @@ budget-api/
 | GET    | `/categories`         | Список категорий текущего пользователя, сортировка по `title` ASC                                                    | `categories.controller.ts`   | реализован            |
 | POST   | `/categories`         | Создать категорию по `CreateCategoryDto` (поле `title`). 409, если у пользователя уже есть категория с таким `title` | `categories.controller.ts`   | реализован            |
 | POST   | `/transactions`       | Создать транзакцию по `CreateTransactionDto` (опц. `categoryId` — 404, если категория чужая/не существует)           | `transactions.controller.ts` | реализован            |
-| POST   | `/transactions/voice` | Приём аудиофайла (поле формы `audio`, ≤ 1 МБ, mime `audio/*`). Аудио (Nexara) → текст → LLM-парсинг (Gemini) → создание транзакции. Возвращает транзакцию + `suggestedCategories` + `categoryPending` (+ `_debug` при `DEBUG_VOICE=true`) | `transactions.controller.ts` | реализован |
+| POST   | `/transactions/voice` | Приём аудиофайла (поле формы `audio`, ≤ 1 МБ, mime `audio/*`). Аудио (Nexara) → текст → LLM-парсинг (OpenRouter) → создание транзакции. Возвращает транзакцию + `suggestedCategories` + `categoryPending` (+ `_debug` при `DEBUG_VOICE=true`) | `transactions.controller.ts` | реализован |
 | GET    | `/transactions`       | Список транзакций, сортировка по `date` DESC. Query: `limit` (default 50, max 100), `offset` (default 0)             | `transactions.controller.ts` | реализован            |
 | GET    | `/transactions/:id`   | Получить транзакцию по id. 404, если нет/чужая                                                                       | `transactions.controller.ts` | реализован            |
 | PATCH  | `/transactions/:id/category` | Уточнить категорию pending-транзакции по `SetCategoryDto` (`categoryName`). Находит-или-создаёт категорию, гасит авто-подтверждение. 404, если транзакция чужая | `transactions.controller.ts` | реализован            |
