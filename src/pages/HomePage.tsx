@@ -1,7 +1,8 @@
+import { Link } from "react-router-dom"
+import { Clock } from "lucide-react"
 import { useTransactions } from "@/features/transactions/hooks"
 import { monthlyExpenses } from "@/features/transactions/totals"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
-import CategoryPendingBadge from "@/features/transactions/CategoryPendingBadge"
 import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
 import { useCategories } from "@/features/categories/hooks"
 import { formatCurrency, formatDate } from "@/lib/format"
@@ -46,12 +47,14 @@ function HomePage() {
         ) : (
           <ul className='flex flex-col gap-2'>
             {transactions.map((t) => (
-              <li
-                key={t.id}
-                className='rounded-md border border-gray-500/20 px-4 py-3'
-              >
-                <div className='flex items-center justify-between gap-4'>
-                  <div className='flex flex-col'>
+              <li key={t.id}>
+                {/* Клик по строке ведёт на страницу детали траты, где можно
+                    подтвердить категорию, отредактировать и удалить. */}
+                <Link
+                  to={`/transactions/${t.id}`}
+                  className='flex items-center justify-between gap-4 rounded-md border border-gray-500/20 px-4 py-3 transition-colors hover:bg-accent'
+                >
+                  <div className='flex flex-col items-start'>
                     <span className='font-medium'>
                       {t.description || "Без описания"}
                     </span>
@@ -60,6 +63,14 @@ function HomePage() {
                       {categoryTitle(t.categoryId) &&
                         ` · ${categoryTitle(t.categoryId)}`}
                     </span>
+                    {/* Подсказка, что у траты не подтверждена категория —
+                        подтвердить можно, провалившись в саму трату. */}
+                    {t.autoConfirmAt && (
+                      <span className='mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300'>
+                        <Clock className='h-3 w-3' />
+                        Уточнить категорию
+                      </span>
+                    )}
                   </div>
                   <span
                     className={
@@ -71,8 +82,7 @@ function HomePage() {
                     {t.type === "INCOME" ? "+" : "−"}
                     {formatCurrency(t.amount, t.currency)}
                   </span>
-                </div>
-                {t.autoConfirmAt && <CategoryPendingBadge transaction={t} />}
+                </Link>
               </li>
             ))}
           </ul>

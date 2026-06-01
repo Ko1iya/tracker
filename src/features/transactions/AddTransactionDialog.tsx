@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Plus } from "lucide-react"
@@ -24,32 +24,63 @@ import {
 import { useCategories, useCreateCategory } from "@/features/categories/hooks"
 import { normalizeCategoryTitle } from "@/features/categories/api"
 import type { Category } from "@/features/categories/api"
-import { useCreateTransaction, useTransactions } from "./hooks"
+import type { Transaction } from "./api"
+import {
+  useCreateTransaction,
+  useTransactions,
+  useUpdateTransaction,
+} from "./hooks"
 import { createTransactionSchema } from "./schema"
 import { topCategoryIds } from "./totals"
 import CategoryPicker from "./CategoryPicker"
 
-// Модальное окно ручного добавления транзакции.
+// Модальное окно добавления/правки транзакции.
 // trigger — кастомный элемент-триггер (например, круглая кнопка нижней панели);
 // если не передан, рендерим дефолтную кнопку «Добавить».
-function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
+// transaction — если передана, диалог работает в режиме правки: поля заполнены
+// её значениями, сохранение шлёт PATCH вместо POST.
+function AddTransactionDialog({
+  trigger,
+  transaction,
+}: {
+  trigger?: ReactNode
+  transaction?: Transaction
+}) {
+  const isEdit = Boolean(transaction)
   const [open, setOpen] = useState(false)
   const createTx = useCreateTransaction()
+  const updateTx = useUpdateTransaction()
   const createCat = useCreateCategory()
   const { data: categories } = useCategories()
   const { data: transactions } = useTransactions()
 
+  const allCategories: Category[] = useMemo(
+    () => categories ?? [],
+    [categories],
+  )
+
   // Топ-частых категорий для радиокнопок: id из частот резолвим в категории.
   // Fallback (нет частотных данных) — первые до 5 категорий из справочника.
-  const allCategories: Category[] = categories ?? []
-  const topIds = topCategoryIds(transactions ?? [])
-  const frequentFromUsage = topIds
-    .map((id) => allCategories.find((c) => c.id === id))
-    .filter((c): c is Category => c !== undefined)
-  const frequent =
-    frequentFromUsage.length > 0
-      ? frequentFromUsage
-      : allCategories.slice(0, 5)
+  // В режиме правки гарантируем, что текущая категория траты есть среди чипсов —
+  // иначе радиовыбор был бы выставлен, но визуально не подсвечен.
+  // Мемоизация — чтобы массив не пересоздавался каждый рендер и не дёргал эффект.
+  const frequent = useMemo(() => {
+    const topIds = topCategoryIds(transactions ?? [])
+    const frequentFromUsage = topIds
+      .map((id) => allCategories.find((c) => c.id === id))
+      .filter((c): c is Category => c !== undefined)
+    const base =
+      frequentFromUsage.length > 0
+        ? frequentFromUsage
+        : allCategories.slice(0, 5)
+    const current =
+      transaction?.categoryId != null
+        ? allCategories.find((c) => c.id === transaction.categoryId)
+        : undefined
+    return current && !base.some((c) => c.id === current.id)
+      ? [current, ...base]
+      : base
+  }, [allCategories, transactions, transaction])
 
   const {
     register,
@@ -70,15 +101,37 @@ function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
     },
   })
 
-  // Предвыбор самой частой категории, когда данные загрузились (или при открытии).
-  // Не трогаем, если пользователь уже что-то выбрал/ввёл.
   const categoryId = watch("categoryId")
   const categoryInput = watch("categoryInput")
+
+  // В режиме правки при открытии заполняем форму значениями транзакции.
+  // Категорию ставим радиовыбором (её id уже гарантированно есть среди чипсов).
   useEffect(() => {
-    if (open && categoryId === "" && categoryInput === "" && frequent[0]) {
+    if (open && transaction) {
+      reset({
+        amount: Number(transaction.amount),
+        description: transaction.description ?? "",
+        type: transaction.type,
+        categoryId:
+          transaction.categoryId != null ? String(transaction.categoryId) : "",
+        categoryInput: "",
+      })
+    }
+  }, [open, transaction, reset])
+
+  // Создание: предвыбор самой частой категории при открытии (если ничего не
+  // выбрано). В режиме правки не вмешиваемся — там значения ставит эффект выше.
+  useEffect(() => {
+    if (
+      !isEdit &&
+      open &&
+      categoryId === "" &&
+      categoryInput === "" &&
+      frequent[0]
+    ) {
       setValue("categoryId", String(frequent[0].id))
     }
-  }, [open, categoryId, categoryInput, frequent, setValue])
+  }, [isEdit, open, categoryId, categoryInput, frequent, setValue])
 
   // Определяем categoryId для запроса: ручной ввод приоритетнее радиокнопки.
   const resolveCategoryId = async (): Promise<number | undefined> => {
@@ -96,13 +149,18 @@ function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
 
   const onSubmit = handleSubmit(async (values) => {
     const resolvedCategoryId = await resolveCategoryId()
-    await createTx.mutateAsync({
+    const payload = {
       amount: values.amount,
       type: values.type,
       // пустое описание → undefined (в БД null)
       description: values.description?.trim() || undefined,
       categoryId: resolvedCategoryId,
-    })
+    }
+    if (transaction) {
+      await updateTx.mutateAsync({ id: transaction.id, input: payload })
+    } else {
+      await createTx.mutateAsync(payload)
+    }
     reset()
     setOpen(false)
   })
@@ -113,11 +171,13 @@ function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
     if (!next) {
       reset()
       createTx.reset()
+      updateTx.reset()
       createCat.reset()
     }
   }
 
-  const isPending = createTx.isPending || createCat.isPending
+  const isPending =
+    createTx.isPending || updateTx.isPending || createCat.isPending
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -132,7 +192,9 @@ function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Новая транзакция</DialogTitle>
+          <DialogTitle>
+            {isEdit ? "Редактировать транзакцию" : "Новая транзакция"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className='flex flex-col gap-4'>
@@ -205,7 +267,7 @@ function AddTransactionDialog({ trigger }: { trigger?: ReactNode }) {
             />
           </div>
 
-          {(createTx.isError || createCat.isError) && (
+          {(createTx.isError || updateTx.isError || createCat.isError) && (
             <p className='text-sm text-destructive'>
               Не удалось сохранить. Проверь, что бэкенд запущен.
             </p>

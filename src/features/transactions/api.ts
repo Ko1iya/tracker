@@ -24,6 +24,13 @@ export async function getTransactions(): Promise<Transaction[]> {
   return data
 }
 
+// GET /transactions/:id — одна транзакция текущего пользователя (требует JWT).
+// Бэкенд отвечает 404, если транзакция не найдена или принадлежит другому юзеру.
+export async function getTransaction(id: number): Promise<Transaction> {
+  const { data } = await api.get<Transaction>(`/transactions/${id}`)
+  return data
+}
+
 // Тело запроса на создание. Совпадает с CreateTransactionDto бэкенда.
 
 export interface CreateTransactionInput {
@@ -39,6 +46,27 @@ export async function createTransaction(
   input: CreateTransactionInput,
 ): Promise<Transaction> {
   const { data } = await api.post<Transaction>("/transactions", input)
+  return data
+}
+
+// Тело запроса на правку. PATCH принимает любое подмножество полей создания
+// (на бэке UpdateTransactionDto = PartialType(CreateTransactionDto)).
+export type UpdateTransactionInput = Partial<CreateTransactionInput>
+
+// PATCH /transactions/:id — обновляет транзакцию (требует JWT). Поля, которых
+// нет в input, бэкенд не трогает. Возвращает обновлённую транзакцию.
+export async function updateTransaction(
+  id: number,
+  input: UpdateTransactionInput,
+): Promise<Transaction> {
+  const { data } = await api.patch<Transaction>(`/transactions/${id}`, input)
+  return data
+}
+
+// DELETE /transactions/:id — удаляет транзакцию (требует JWT). Бэкенд
+// возвращает { id } удалённой записи.
+export async function deleteTransaction(id: number): Promise<{ id: number }> {
+  const { data } = await api.delete<{ id: number }>(`/transactions/${id}`)
   return data
 }
 

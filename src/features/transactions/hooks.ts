@@ -2,9 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   createTransaction,
   createTransactionFromVoice,
+  deleteTransaction,
+  getTransaction,
   getTransactions,
   setTransactionCategory,
+  updateTransaction,
 } from "./api"
+import type { UpdateTransactionInput } from "./api"
 import { transactionKeys } from "./keys"
 
 // useTransactions — чтение списка транзакций с кешированием под ключом
@@ -17,6 +21,17 @@ export function useTransactions() {
   })
 }
 
+// useTransaction — чтение одной транзакции по id под ключом
+// transactionKeys.detail(id). Нужна для страницы детали: при переходе по прямой
+// ссылке/обновлении страницы кеш списка может быть пустым, поэтому грузим точечно.
+export function useTransaction(id: number) {
+  return useQuery({
+    queryKey: transactionKeys.detail(id),
+    queryFn: () => getTransaction(id),
+    enabled: Number.isFinite(id),
+  })
+}
+
 // useCreateTransaction — мутация создания транзакции. После успеха инвалидирует
 // кеш списка теми же ключами (transactionKeys.all), чтобы лента перезапросилась
 // и новая трата появилась без ручного обновления страницы.
@@ -25,6 +40,34 @@ export function useCreateTransaction() {
 
   return useMutation({
     mutationFn: createTransaction,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: transactionKeys.all })
+    },
+  })
+}
+
+// useUpdateTransaction — мутация правки транзакции. На вход id и подмножество
+// полей. Инвалидация transactionKeys.all освежает и ленту, и кеш детали (общий
+// префикс ключей), поэтому страница и список подтягивают свежие данные сами.
+export function useUpdateTransaction() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateTransactionInput }) =>
+      updateTransaction(id, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: transactionKeys.all })
+    },
+  })
+}
+
+// useDeleteTransaction — мутация удаления транзакции по id. После успеха
+// инвалидирует ленту, чтобы удалённая трата сразу пропала из списка.
+export function useDeleteTransaction() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: number) => deleteTransaction(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: transactionKeys.all })
     },

@@ -35,3 +35,17 @@ const dateFormatter = new Intl.DateTimeFormat("ru-RU", {
 export function formatDate(date: string | Date): string {
   return dateFormatter.format(new Date(date))
 }
+
+// Полная дата со временем — для подробной карточки транзакции
+// (например, «5 мая 2026 г., 14:30»).
+const dateTimeFormatter = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+})
+
+export function formatDateTime(date: string | Date): string {
+  return dateTimeFormatter.format(new Date(date))
+}

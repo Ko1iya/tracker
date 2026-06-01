@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
 import SettingsPage from "./pages/SettingsPage"
+import TransactionDetailPage from "./pages/TransactionDetailPage"
 import { Toaster } from "./components/ui/sonner"
 
 function App() {
@@ -16,6 +17,10 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path='/' element={<HomePage />} />
+            <Route
+              path='/transactions/:id'
+              element={<TransactionDetailPage />}
+            />
             <Route path='/settings' element={<SettingsPage />} />
             {/* Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную */}
             <Route path='*' element={<HomePage />} />

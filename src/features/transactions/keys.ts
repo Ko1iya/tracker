@@ -4,4 +4,7 @@
 // (создание расхода) будут инвалидировать кеш теми же ключами.
 export const transactionKeys = {
   all: ["transactions"] as const,
+  // Ключ одной транзакции. Префикс совпадает с all (["transactions"]), поэтому
+  // инвалидация all автоматически освежает и кеши детальных страниц.
+  detail: (id: number) => ["transactions", id] as const,
 }

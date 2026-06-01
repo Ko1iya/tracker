@@ -22,7 +22,7 @@ function Layout() {
           </NavLink>
         </nav>
       </header>
-      <main className='flex-1 p-5 pb-24 sm:pb-5'>
+      <main className='flex-1 p-5 pb-26 sm:pb-5'>
         <Outlet />
       </main>
       <BottomNav />
