@@ -50,8 +50,8 @@ budget-api/
     │       └── set-category.dto.ts                 # DTO для PATCH /:id/category: categoryName
     ├── categories/
     │   ├── categories.module.ts                    # NestJS module для домена категорий
-    │   ├── categories.controller.ts                # REST endpoints GET/POST /categories
-    │   ├── categories.service.ts                   # Чтение и создание категорий пользователя через PrismaService
+    │   ├── categories.controller.ts                # REST endpoints GET/POST/DELETE /categories
+    │   ├── categories.service.ts                   # Чтение, создание и удаление категорий пользователя через PrismaService
     │   ├── normalize-title.ts                      # Нормализация названия категории перед записью
     │   └── dto/
     │       └── create-category.dto.ts              # DTO для POST: title
@@ -117,8 +117,8 @@ budget-api/
 #### `src/categories/`
 
 - **`categories.module.ts`** — `CategoriesModule`. Импортирует `PrismaModule`, регистрирует `CategoriesController` и `CategoriesService`.
-- **`categories.controller.ts`** — `CategoriesController` с префиксом `/categories`. Закрыт `@UseGuards(JwtAuthGuard)`. Методы: `findAll` (GET `/categories`), `create` (POST `/categories`, тело — `CreateCategoryDto`). `userId` берётся из токена через `@CurrentUser()`.
-- **`categories.service.ts`** — `CategoriesService` с injected `PrismaService`. Методы: `findAll(userId)` — `findMany` с `where: { userId }`, `orderBy: { title: 'asc' }`; `create(userId, dto)` — `prisma.category.create` со связыванием `user.connect`; ловит P2002 → `ConflictException`. **Внешняя интеграция:** Prisma Client.
+- **`categories.controller.ts`** — `CategoriesController` с префиксом `/categories`. Закрыт `@UseGuards(JwtAuthGuard)`. Методы: `findAll` (GET `/categories`), `create` (POST `/categories`, тело — `CreateCategoryDto`), `remove` (DELETE `/categories/:id`, `@HttpCode(204)`, `:id` через `ParseIntPipe`). `userId` берётся из токена через `@CurrentUser()`.
+- **`categories.service.ts`** — `CategoriesService` с injected `PrismaService`. Методы: `findAll(userId)` — `findMany` с `where: { userId }`, `orderBy: { title: 'asc' }`, `_count.transactions` разворачивается в плоское поле `transactionCount`; `create(userId, dto)` — `prisma.category.create` со связыванием `user.connect`; ловит P2002 → `ConflictException`; `remove(userId, id)` — `findUnique` с `_count.transactions`; нет/чужая → `NotFoundException` (404), есть транзакции → `ConflictException` (409), иначе `delete`. **Внешняя интеграция:** Prisma Client.
 - **`dto/create-category.dto.ts`** — `CreateCategoryDto`. Поле `title` (`@IsString`, `@MinLength(1)`, `@MaxLength(50)`).
 
 #### `src/llm/`
@@ -136,8 +136,9 @@ budget-api/
 | GET    | `/`                   | Возвращает строку-приветствие (`Hello World!!`)                                                                      | `app.controller.ts`          | реализован, публичный |
 | POST   | `/auth/register`      | Регистрация по `RegisterDto`. Возвращает `{ accessToken, user }`. 409 если email занят                               | `auth.controller.ts`         | реализован, публичный |
 | POST   | `/auth/login`         | Логин по `LoginDto`. Возвращает `{ accessToken, user }`. 401 при неверной паре                                       | `auth.controller.ts`         | реализован, публичный |
-| GET    | `/categories`         | Список категорий текущего пользователя, сортировка по `title` ASC                                                    | `categories.controller.ts`   | реализован            |
+| GET    | `/categories`         | Список категорий текущего пользователя, сортировка по `title` ASC. Каждый элемент содержит `transactionCount`        | `categories.controller.ts`   | реализован            |
 | POST   | `/categories`         | Создать категорию по `CreateCategoryDto` (поле `title`). 409, если у пользователя уже есть категория с таким `title` | `categories.controller.ts`   | реализован            |
+| DELETE | `/categories/:id`     | Удалить категорию по id. 204 при успехе, 400 если `id` не число, 404 если нет/чужая, 409 если используется транзакциями | `categories.controller.ts`   | реализован            |
 | POST   | `/transactions`       | Создать транзакцию по `CreateTransactionDto` (опц. `categoryId` — 404, если категория чужая/не существует)           | `transactions.controller.ts` | реализован            |
 | POST   | `/transactions/voice` | Приём аудиофайла (поле формы `audio`, ≤ 1 МБ, mime `audio/*`). Аудио (Nexara) → текст → LLM-парсинг (OpenRouter) → создание транзакции. Возвращает транзакцию + `suggestedCategories` + `categoryPending` (+ `_debug` при `DEBUG_VOICE=true`) | `transactions.controller.ts` | реализован |
 | GET    | `/transactions`       | Список транзакций, сортировка по `date` DESC. Query: `limit` (default 50, max 100), `offset` (default 0)             | `transactions.controller.ts` | реализован            |
