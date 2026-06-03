@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -20,14 +21,15 @@ function TransactionDetailPage() {
   const { data: categories } = useCategories()
   const del = useDeleteTransaction()
 
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
   // Ссылка «назад» к ленте — общая для всех состояний страницы.
   const backLink = (
     <Link
       to='/'
       className='inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground'
     >
-      <ArrowLeft className='h-4 w-4' />
-      К ленте
+      <ArrowLeft className='h-4 w-4' />К ленте
     </Link>
   )
 
@@ -58,7 +60,10 @@ function TransactionDetailPage() {
   const isIncome = tx.type === "INCOME"
 
   const handleDelete = () => {
-    if (!window.confirm("Удалить эту транзакцию? Действие необратимо.")) return
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
     del.mutate(txId, {
       onSuccess: () => {
         toast.success("Транзакция удалена")
@@ -131,10 +136,15 @@ function TransactionDetailPage() {
         <Button
           variant='destructive'
           onClick={handleDelete}
-          disabled={del.isPending}
+          onBlur={() => setConfirmDelete(false)}
+          disabled={del.isPending || del.isSuccess}
         >
           <Trash2 />
-          {del.isPending ? "Удаляем…" : "Удалить"}
+          {del.isPending || del.isSuccess
+            ? "Удаляем…"
+            : confirmDelete
+              ? "Точно удалить?"
+              : "Удалить"}
         </Button>
       </div>
     </section>
