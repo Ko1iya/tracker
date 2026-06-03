@@ -29,9 +29,9 @@ budget-web/
     │   │   ├── schema.ts      # zod-схема формы входа loginSchema + тип LoginFormValues
     │   │   └── hooks.ts       # useLogin (мутация входа), useLogout (разлогин)
     │   ├── categories/
-    │   │   ├── api.ts         # getCategories(), createCategory(), normalizeCategoryTitle(); тип Category
+    │   │   ├── api.ts         # getCategories(), createCategory(), deleteCategory(), normalizeCategoryTitle(); тип Category (+transactionCount)
     │   │   ├── keys.ts        # Реестр query-ключей TanStack Query (categoryKeys)
-    │   │   └── hooks.ts       # useCategories (чтение списка), useCreateCategory (мутация создания)
+    │   │   └── hooks.ts       # useCategories (чтение), useCreateCategory (optimistic), useDeleteCategory
     │   └── transactions/
     │       ├── api.ts         # getTransactions(), createTransaction(), createTransactionFromVoice(), setTransactionCategory(); типы Transaction, TransactionType, CreateTransactionInput
     │       ├── keys.ts        # Реестр query-ключей TanStack Query (transactionKeys)
@@ -56,8 +56,9 @@ budget-web/
     └── pages/
         ├── HomePage.tsx       # Главная: лента расходов и сводка за месяц
         ├── TransactionDetailPage.tsx # Детали одной траты: инфо, подтверждение категории, правка, удаление
+        ├── CategoriesPage.tsx # Управление категориями: добавление, счётчик использования, удаление с undo
         ├── LoginPage.tsx      # Страница входа (форма на react-hook-form + zod), вне Layout
-        └── SettingsPage.tsx   # Страница «Профиль»: настройки (заглушка) + кнопка выхода
+        └── SettingsPage.tsx   # Страница «Профиль»: ссылка на категории + кнопка выхода
 ```
 
 ### Описание файлов
@@ -70,7 +71,7 @@ budget-web/
 #### `src/`
 
 - **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`, обёрнутый в `QueryClientProvider` (TanStack Query) с клиентом из `lib/queryClient.ts`. Импортирует глобальный `index.css`.
-- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно; закрытая зона (`/`, `/transactions/:id`, `/settings` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас). Здесь же монтируется глобальный `<Toaster />` (sonner) для всплывающих уведомлений.
+- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно; закрытая зона (`/`, `/transactions/:id`, `/settings`, `/categories` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас). Здесь же монтируется глобальный `<Toaster />` (sonner) для всплывающих уведомлений.
 - **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (preflight-сброс). Дальше — тема shadcn/ui: CSS-переменные дизайн-токенов (`--background`, `--primary` и т.д.) в `:root` и `.dark`, маппинг токенов в Tailwind через `@theme inline`, шрифт Inter (`@fontsource-variable/inter`), `@layer base` для базовых стилей `body`/`html`.
 - **`vite-env.d.ts`** — декларации типов окружения Vite. Подключает `vite/client` и типизирует `import.meta.env.VITE_API_URL` (базовый URL `budget-api`).
 
@@ -90,9 +91,9 @@ budget-web/
 
 #### `src/features/categories/`
 
-- **`api.ts`** — функции запросов к budget-api (named exports). `getCategories()` — `GET /categories` (требует JWT), возвращает массив категорий пользователя. `createCategory(title)` — `POST /categories` (требует JWT): создаёт категорию по названию; бэкенд нормализует `title` и при дубликате (`userId+title`) отвечает 409. `normalizeCategoryTitle(raw)` — фронтовая копия серверной нормализации (trim + первая буква в верхний регистр), чтобы до запроса найти уже существующую категорию и не ловить лишний 409. Тип `Category` (`id`, `title`, `userId`).
-- **`keys.ts`** — `categoryKeys` (named export), реестр query-ключей TanStack Query для категорий. Чтение и инвалидация (после создания) используют один ключ.
-- **`hooks.ts`** — `useCategories`, `useCreateCategory` (named exports). `useCategories` — чтение списка через `useQuery` под ключом `categoryKeys.all`. `useCreateCategory` — мутация создания категории; после успеха инвалидирует `categoryKeys.all`, чтобы новая категория сразу появилась в выпадающем списке.
+- **`api.ts`** — функции запросов к budget-api (named exports). `getCategories()` — `GET /categories` (требует JWT), возвращает массив категорий пользователя (каждая со счётчиком `transactionCount` — бэк считает через `_count`). `createCategory(title)` — `POST /categories` (требует JWT): создаёт категорию по названию; бэкенд нормализует `title` и при дубликате (`userId+title`) отвечает 409. `deleteCategory(id)` — `DELETE /categories/:id` (требует JWT): удаляет категорию; бэкенд запрещает удаление используемой (при `transactionCount > 0` отвечает 409, чужая/несуществующая — 404, успех — 204). `normalizeCategoryTitle(raw)` — фронтовая копия серверной нормализации (trim + первая буква в верхний регистр), чтобы до запроса найти уже существующую категорию и не ловить лишний 409. Тип `Category` (`id`, `title`, `userId`, `transactionCount`).
+- **`keys.ts`** — `categoryKeys` (named export), реестр query-ключей TanStack Query для категорий. Чтение и инвалидация (после создания/удаления) используют один ключ.
+- **`hooks.ts`** — `useCategories`, `useCreateCategory`, `useDeleteCategory` (named exports). `useCategories` — чтение списка через `useQuery` под ключом `categoryKeys.all`. `useCreateCategory` — мутация создания с оптимистичным добавлением в кеш (временная запись с отрицательным id, при ошибке откат, в `onSettled` инвалидация). `useDeleteCategory` — мутация удаления; в `onSettled` инвалидирует `categoryKeys.all` (при успехе подтянет актуальный список, при 409 вернёт строку). Оптимистичное скрытие на время undo-окна делает сам экран `CategoriesPage`.
 
 #### `src/features/transactions/`
 
@@ -125,8 +126,9 @@ budget-web/
 
 - **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactions` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). Через `useCategories` сопоставляет `categoryId` транзакции с названием категории и показывает его рядом с датой. Каждая трата — `Link` на `/transactions/:id` (страница детали), где можно подтвердить категорию, отредактировать и удалить; у трат с активным `autoConfirmAt` в строке показывается некликабельный бейдж-подсказка «Уточнить категорию». В шапке ленты (только на десктопе, `hidden sm:flex`) — `VoiceRecorderButton` (голосовой ввод) и `AddTransactionDialog` (ручной ввод); на мобиле эти действия живут в `BottomNav`.
 - **`TransactionDetailPage.tsx`** — `TransactionDetailPage` (default export). Страница детали одной траты (маршрут `/transactions/:id`). Берёт `id` из `useParams`, грузит транзакцию через `useTransaction` (404/невалидный id → «Транзакция не найдена»). Показывает: шапку с крупной суммой (знак/цвет по типу) и описанием; заметный блок подтверждения категории `CategoryConfirmPanel` (если активен `autoConfirmAt`); список подробностей (дата со временем через `formatDateTime`, категория из `useCategories`, тип, валюта). Действия: «Редактировать» — `AddTransactionDialog` в режиме правки (prop `transaction`); «Удалить» — через `useDeleteTransaction` с подтверждением `window.confirm`, по успеху тост (sonner) и возврат на `/`.
+- **`CategoriesPage.tsx`** — `CategoriesPage` (default export, маршрут `/categories`). Экран управления категориями. Список грузит через `useCategories`. Поле сверху + `useCreateCategory` добавляют категорию (чип появляется мгновенно благодаря optimistic-обновлению; дубликат не шлётся на бэк, а подсвечивает существующую строку). Каждая строка — название, бейдж со счётчиком `transactionCount` и крестик удаления. Удалять можно только пустые категории (у используемых крестик `disabled` с подсказкой — бэк всё равно ответит 409). Удаление с отменой: строка прячется локально, тост (sonner) с кнопкой «Отменить» висит 5с, и только по истечении окна вызывается `useDeleteCategory` (`DELETE`); уход со страницы во время окна отменяет удаление.
 - **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLogin`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
-- **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница «Профиль»: настройки приложения (пока заглушка) и кнопка «Выйти из аккаунта» (через `useLogout`). Выход перенесён сюда из шапки `Layout` — на мобиле в шапке навигации нет.
+- **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница «Профиль»: список настроек со ссылкой на `/categories` (управление категориями) и кнопка «Выйти из аккаунта» (через `useLogout`). Выход перенесён сюда из шапки `Layout` — на мобиле в шапке навигации нет.
 
 ---
 
@@ -138,6 +140,7 @@ budget-web/
 | ----------- | ------------------ | ----------------------------------------------- | -------------------------- | -------- |
 | `/`         | `HomePage`         | Лента расходов и сводка за месяц (внутри Layout, требует авторизации) | `src/pages/HomePage.tsx`   | готово   |
 | `/transactions/:id` | `TransactionDetailPage` | Детали траты: инфо, подтверждение категории, правка, удаление (внутри Layout, требует авторизации) | `src/pages/TransactionDetailPage.tsx` | готово |
-| `/settings` | `SettingsPage`     | Профиль: настройки (заглушка) + выход (внутри Layout, требует авторизации) | `src/pages/SettingsPage.tsx` | частично |
+| `/settings` | `SettingsPage`     | Профиль: ссылка на категории + выход (внутри Layout, требует авторизации) | `src/pages/SettingsPage.tsx` | частично |
+| `/categories` | `CategoriesPage` | Управление категориями: добавление, счётчик, удаление с undo (внутри Layout, требует авторизации) | `src/pages/CategoriesPage.tsx` | готово |
 | `/login`    | `LoginPage`        | Вход, отдельно от Layout (без навигации)        | `src/pages/LoginPage.tsx`  | готово   |
 | `*`         | `HomePage`         | Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную (без токена — на `/login`) | `src/App.tsx`              | готово   |

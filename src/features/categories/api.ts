@@ -6,6 +6,7 @@ export interface Category {
   id: number
   title: string
   userId: number
+  transactionCount: number
 }
 
 // GET /categories — список категорий текущего пользователя (требует JWT).
@@ -20,6 +21,10 @@ export async function getCategories(): Promise<Category[]> {
 export async function createCategory(title: string): Promise<Category> {
   const { data } = await api.post<Category>("/categories", { title })
   return data
+}
+
+export async function deleteCategory(id: number): Promise<void> {
+  await api.delete(`/categories/${id}`)
 }
 
 // Нормализация названия категории — копия серверной (normalize-title.ts):
