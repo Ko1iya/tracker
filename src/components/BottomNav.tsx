@@ -1,5 +1,5 @@
-import { NavLink } from "react-router-dom"
-import { Camera, Pencil, User } from "lucide-react"
+import { Link, useLocation } from "react-router-dom"
+import { Camera, House, Pencil, User } from "lucide-react"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
 import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
 import { cn } from "@/lib/utils"
@@ -17,6 +17,9 @@ const labelClass = "text-[11px] text-muted-foreground"
 // + настройки), справа — три способа добавить расход в едином крупном стиле:
 // вручную (диалог формы), голосом (запись), фото (распознавание чека — задел).
 function BottomNav() {
+  const { pathname } = useLocation()
+  const onFeed = pathname === "/"
+
   return (
     <nav className='fixed inset-x-0 bottom-0 z-40 border-t border-white/20 bg-background/40 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] sm:hidden'>
       {/* Прогрессивное размытие фона. Слои ВЛОЖЕНЫ друг в друга для более плавного перехода от четкого к размытию. */}
@@ -41,24 +44,20 @@ function BottomNav() {
         </div>
       </div>
       <div className='flex items-end justify-between px-4 py-2'>
-        {/* Слева: профиль (нейтральный, активный — акцентный) */}
-        <NavLink to='/settings' className='flex flex-col items-center gap-1'>
-          {({ isActive }) => (
-            <>
-              <span
-                className={cn(
-                  fabBase,
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground",
-                )}
-              >
-                <User className='size-7' />
-              </span>
-              <span className={labelClass}>Профиль</span>
-            </>
-          )}
-        </NavLink>
+        {/* Слева: на ленте — вход в профиль, иначе — возврат в ленту */}
+        <Link
+          to={onFeed ? "/settings" : "/"}
+          className='flex flex-col items-center gap-1'
+        >
+          <span className={cn(fabBase, "bg-muted text-foreground")}>
+            {onFeed ? (
+              <User className='size-7' />
+            ) : (
+              <House className='size-7' />
+            )}
+          </span>
+          <span className={labelClass}>{onFeed ? "Профиль" : "Лента"}</span>
+        </Link>
 
         {/* Справа: способы добавить расход */}
         <div className='flex items-end gap-3'>
