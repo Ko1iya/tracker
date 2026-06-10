@@ -32,16 +32,19 @@ budget-web/
     │   │   ├── api.ts         # getCategories(), createCategory(), deleteCategory(), normalizeCategoryTitle(); тип Category (+transactionCount)
     │   │   ├── keys.ts        # Реестр query-ключей TanStack Query (categoryKeys)
     │   │   └── hooks.ts       # useCategories (чтение), useCreateCategory (optimistic), useDeleteCategory
-    │   └── transactions/
-    │       ├── api.ts         # getTransactions(), createTransaction(), createTransactionFromVoice(), setTransactionCategory(); типы Transaction, TransactionType, CreateTransactionInput
-    │       ├── keys.ts        # Реестр query-ключей TanStack Query (transactionKeys)
-    │       ├── hooks.ts       # useTransactions, useCreateTransaction, useCreateTransactionFromVoice, useSetTransactionCategory (все мутации инвалидируют кеш ленты)
-    │       ├── schema.ts      # zod-схема формы создания createTransactionSchema + тип CreateTransactionFormValues
-    │       ├── totals.ts      # monthlyExpenses (расходы за месяц), topCategoryIds (частые категории) — чистые функции
-    │       ├── AddTransactionDialog.tsx # Модалка ручного добавления транзакции (форма + триггер «+»)
-    │       ├── CategoryPicker.tsx       # Поле выбора категории: радиокнопки топ-частых + ручной ввод с автодополнением
-    │       ├── VoiceRecorderButton.tsx  # Кнопка голосового ввода: MediaRecorder → POST /transactions/voice
-    │       └── CategoryConfirmPanel.tsx # Блок подтверждения pending-категории на странице детали (suggestedCategories / своя)
+    │   ├── transactions/
+    │   │   ├── api.ts         # getTransactions(), createTransaction(), createTransactionFromVoice(), setTransactionCategory(); типы Transaction, TransactionType, CreateTransactionInput
+    │   │   ├── keys.ts        # Реестр query-ключей TanStack Query (transactionKeys)
+    │   │   ├── hooks.ts       # useTransactions, useCreateTransaction, useCreateTransactionFromVoice, useSetTransactionCategory (все мутации инвалидируют кеш ленты)
+    │   │   ├── schema.ts      # zod-схема формы создания createTransactionSchema + тип CreateTransactionFormValues
+    │   │   ├── totals.ts      # monthlyExpenses (расходы за месяц), topCategoryIds (частые категории) — чистые функции
+    │   │   ├── AddTransactionDialog.tsx # Модалка ручного добавления транзакции (форма + триггер «+»)
+    │   │   ├── CategoryPicker.tsx       # Поле выбора категории: радиокнопки топ-частых + ручной ввод с автодополнением
+    │   │   ├── VoiceRecorderButton.tsx  # Кнопка голосового ввода: MediaRecorder → POST /transactions/voice
+    │   │   └── CategoryConfirmPanel.tsx # Блок подтверждения pending-категории на странице детали (suggestedCategories / своя)
+    │   └── theme/
+    │       ├── theme.ts       # Логика темы: тип Theme, чтение/применение (класс .dark на <html>), localStorage
+    │       └── useTheme.ts    # Хук useTheme: текущая тема + setTheme, слежение за системной темой
     ├── components/
     │   ├── Layout.tsx         # Визуальный каркас авторизованных страниц: шапка (десктоп) + <Outlet /> + BottomNav (мобайл)
     │   ├── BottomNav.tsx      # Нижняя панель мобильной версии: слева Профиль, справа три способа добавить расход (вручную · голос · фото)
@@ -65,7 +68,7 @@ budget-web/
 
 #### Корень
 
-- **`index.html`** — HTML-шаблон Vite. `<html lang="ru">`, `<title>Tracker — AI Budget App</title>`, контейнер `<div id="root">` и подключение модуля `/src/main.tsx`.
+- **`index.html`** — HTML-шаблон Vite. `<html lang="ru">`, `<title>Tracker — AI Budget App</title>`, контейнер `<div id="root">` и подключение модуля `/src/main.tsx`. В `<head>` — небольшой inline-скрипт, который до загрузки React читает сохранённую тему из `localStorage` (ключ `tracker-theme`) и ставит класс `.dark` на `<html>`, чтобы при тёмной теме не мелькала светлая (anti-FOUC). Дублирует логику `features/theme`.
 - **`vite.config.ts`** — конфиг Vite. Плагины: `@vitejs/plugin-react` (Fast Refresh + JSX-трансформация) и `@tailwindcss/vite` (компиляция Tailwind CSS v4). `server.host: true` — dev-сервер слушает на всех сетевых интерфейсах (доступ с телефона по IP). `server.proxy` — запросы на `/api` проксируются на budget-api (`http://localhost:3000`) с отрезанием префикса `/api`; так фронт и API для браузера остаются одним origin (CORS не задействуется).
 
 #### `src/`
@@ -107,6 +110,11 @@ budget-web/
 - **`VoiceRecorderButton.tsx`** — `VoiceRecorderButton` (default export, опц. пропы `fab?: boolean`, `className?: string`). Кнопка голосового ввода. Через `navigator.mediaDevices.getUserMedia` запрашивает микрофон, пишет звук браузерным `MediaRecorder` (подбирает поддерживаемый mime: `audio/webm;codecs=opus`, fallback `audio/mp4` для Safari) и по второму тапу отправляет blob через `useCreateTransactionFromVoice`. Авто-стоп через 60с — страховка от лимита 1 МБ на бэке. Сама показывает три состояния (idle/recording/«Распознаём…»); ошибки доступа к микрофону и сбой распознавания — всплывающим тостом (sonner). `fab` — круглый icon-only вид для `BottomNav` (стиль круга задаёт `className`); без него — обычная кнопка с текстом.
 - **`CategoryConfirmPanel.tsx`** — `CategoryConfirmPanel` (default export, prop `transaction: Transaction`). Заметный блок подтверждения pending-категории на странице детали транзакции: обратный отсчёт до `autoConfirmAt` (тикает раз в 30с) в виде пилюли, пояснение, чипсы из `suggestedCategories` (тап = принять предложение) + поле «Своя категория». Сабмит через `useSetTransactionCategory` (бэк гасит `autoConfirmAt`, после инвалидации кеша блок исчезает сам). Также исчезает, если за это время сработал крон-автопод­тверждения на бэке.
 
+#### `src/features/theme/`
+
+- **`theme.ts`** — логика цветовой темы (named exports `Theme`, `THEME_STORAGE_KEY`, `getStoredTheme`, `resolveTheme`, `applyTheme`). `Theme` = `"light" | "dark" | "system"`. Тема хранится в `localStorage` под ключом `tracker-theme`; `resolveTheme` превращает `"system"` в конкретную светлую/тёмную через `window.matchMedia("(prefers-color-scheme: dark)")`; `applyTheme` ставит/снимает класс `.dark` на `<html>` (CSS-переменные `.dark` живут в `index.css`).
+- **`useTheme.ts`** — `useTheme` (named export). React-хук: возвращает текущую тему и `setTheme` (пишет в `localStorage`, применяет класс, обновляет состояние). Пока выбран режим `"system"`, подписывается на изменение системной темы (`matchMedia`) и переключает оформление на лету.
+
 #### `src/components/`
 
 - **`Layout.tsx`** — `Layout` (default export). Визуальный каркас авторизованных страниц: шапка с брендом и навигационными `NavLink` (Главная, Профиль), видимыми только на десктопе (`hidden sm:inline`). `<Outlet />` под вложенные страницы, снизу — `BottomNav` (мобильная навигация + действия). Выход вынесен на страницу «Профиль». Стили — Tailwind. Проверку доступа делает `ProtectedRoute` выше по дереву.
@@ -128,7 +136,7 @@ budget-web/
 - **`TransactionDetailPage.tsx`** — `TransactionDetailPage` (default export). Страница детали одной траты (маршрут `/transactions/:id`). Берёт `id` из `useParams`, грузит транзакцию через `useTransaction` (404/невалидный id → «Транзакция не найдена»). Показывает: шапку с крупной суммой (знак/цвет по типу) и описанием; заметный блок подтверждения категории `CategoryConfirmPanel` (если активен `autoConfirmAt`); список подробностей (дата со временем через `formatDateTime`, категория из `useCategories`, тип, валюта). Действия: «Редактировать» — `AddTransactionDialog` в режиме правки (prop `transaction`); «Удалить» — через `useDeleteTransaction` с подтверждением `window.confirm`, по успеху тост (sonner) и возврат на `/`.
 - **`CategoriesPage.tsx`** — `CategoriesPage` (default export, маршрут `/categories`). Экран управления категориями. Список грузит через `useCategories`. Поле сверху + `useCreateCategory` добавляют категорию (чип появляется мгновенно благодаря optimistic-обновлению; дубликат не шлётся на бэк, а подсвечивает существующую строку). Каждая строка — название, бейдж со счётчиком `transactionCount` и крестик удаления. Удалять можно только пустые категории (у используемых крестик `disabled` с подсказкой — бэк всё равно ответит 409). Удаление с отменой: строка прячется локально, тост (sonner) с кнопкой «Отменить» висит 5с, и только по истечении окна вызывается `useDeleteCategory` (`DELETE`); уход со страницы во время окна отменяет удаление.
 - **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLogin`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
-- **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница «Профиль»: список настроек со ссылкой на `/categories` (управление категориями) и кнопка «Выйти из аккаунта» (через `useLogout`). Выход перенесён сюда из шапки `Layout` — на мобиле в шапке навигации нет.
+- **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница «Профиль»: блок «Оформление» с сегментированным переключателем темы (Светлая / Тёмная / Системная) через `useTheme`; список настроек со ссылкой на `/categories` (управление категориями); кнопка «Выйти из аккаунта» (через `useLogout`). Выход перенесён сюда из шапки `Layout` — на мобиле в шапке навигации нет.
 
 ---
 
@@ -140,7 +148,7 @@ budget-web/
 | ----------- | ------------------ | ----------------------------------------------- | -------------------------- | -------- |
 | `/`         | `HomePage`         | Лента расходов и сводка за месяц (внутри Layout, требует авторизации) | `src/pages/HomePage.tsx`   | готово   |
 | `/transactions/:id` | `TransactionDetailPage` | Детали траты: инфо, подтверждение категории, правка, удаление (внутри Layout, требует авторизации) | `src/pages/TransactionDetailPage.tsx` | готово |
-| `/settings` | `SettingsPage`     | Профиль: ссылка на категории + выход (внутри Layout, требует авторизации) | `src/pages/SettingsPage.tsx` | частично |
+| `/settings` | `SettingsPage`     | Профиль: выбор темы, ссылка на категории + выход (внутри Layout, требует авторизации) | `src/pages/SettingsPage.tsx` | частично |
 | `/categories` | `CategoriesPage` | Управление категориями: добавление, счётчик, удаление с undo (внутри Layout, требует авторизации) | `src/pages/CategoriesPage.tsx` | готово |
 | `/login`    | `LoginPage`        | Вход, отдельно от Layout (без навигации)        | `src/pages/LoginPage.tsx`  | готово   |
 | `*`         | `HomePage`         | Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную (без токена — на `/login`) | `src/App.tsx`              | готово   |

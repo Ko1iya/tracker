@@ -28,7 +28,7 @@ function HomePage() {
 
   return (
     <section className='mx-auto flex w-full max-w-2xl flex-col gap-6'>
-      <div className='rounded-lg border border-gray-500/30 p-4'>
+      <div className='rounded-xl border bg-card p-5 shadow-sm'>
         <p className='text-sm text-muted-foreground'>Расходы за этот месяц</p>
         <p className='text-3xl font-bold'>{formatCurrency(spent, "RUB")}</p>
       </div>
@@ -52,7 +52,7 @@ function HomePage() {
                     подтвердить категорию, отредактировать и удалить. */}
                 <Link
                   to={`/transactions/${t.id}`}
-                  className='flex items-center justify-between gap-4 rounded-md border border-gray-500/20 px-4 py-3 transition-colors hover:bg-accent'
+                  className='flex items-center justify-between gap-4 rounded-xl border bg-card px-4 py-3 shadow-xs transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-md'
                 >
                   <div className='flex flex-col items-start'>
                     <span className='font-medium'>
