@@ -58,7 +58,7 @@ function CategoryPicker({
   }
 
   return (
-    <div className='flex flex-col gap-2'>
+    <div className='flex flex-col gap-3'>
       {frequent.length > 0 && (
         <div role='radiogroup' className='flex flex-wrap gap-2'>
           {frequent.map((category) => {
