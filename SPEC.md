@@ -79,7 +79,7 @@ budget-api/
 
 #### `src/`
 
-- **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)`, включает CORS (`enableCors` для origin `http://localhost:5173` — Vite-дев-сервер фронта), регистрирует глобальный `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) и слушает `process.env.PORT ?? 3000`.
+- **`main.ts`** — точка входа. Создаёт NestJS application через `NestFactory.create(AppModule)`, настраивает CORS (`enableCors`: если задан `CORS_ORIGIN` — список origin через запятую; иначе dev-режим — regex на `localhost`/`127.0.0.1`/приватные подсети `192.168.x.x`, `10.x.x.x` на порту `5173`), регистрирует глобальный `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`) и слушает `process.env.PORT ?? 3000`.
 - **`app.module.ts`** — корневой `@Module`. Импортирует `ConfigModule.forRoot({ isGlobal: true })`, `ScheduleModule.forRoot()` (включает крон-задачи), `PrismaModule`, `UsersModule`, `AuthModule`, `TransactionsModule` и `CategoriesModule`, регистрирует `AppController`, провайдит `AppService`.
 - **`app.controller.ts`** — `AppController` без префикса. Один endpoint `GET /` → `appService.getHello()`.
 
