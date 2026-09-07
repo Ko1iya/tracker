@@ -1,0 +1,79 @@
+# Прод-оркестрация Tracker: фронт + бэк + Postgres + edge-nginx + certbot.
+# Запуск (из каталога tracker-deploy, рядом лежат budget-web и budget-api):
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# Этап 1 (стенд руками): образы web/api собираются здесь из соседних репо (build:).
+# Этап 2 (CI/CD): build: заменяется на image: ghcr.io/<user>/... (см. README).
+
+services:
+  # PostgreSQL. Данные живут в именованном volume, переживают пересоздание контейнера.
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # api ждёт, пока база реально готова принимать подключения (см. depends_on ниже).
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Бэк (NestJS). При старте контейнер сам накатывает миграции (docker-entrypoint.sh).
+  # Все секреты приложения приходят из .env.prod.
+  api:
+    build:
+      context: ../budget-api
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - '3000' # порт виден только внутри docker-сети, наружу его проксирует edge-nginx
+
+  # Фронт (статика за внутренним nginx). Наружу не светится — только через edge-nginx.
+  web:
+    build:
+      context: ../budget-web
+      args:
+        VITE_API_URL: /api
+    restart: always
+    expose:
+      - '80'
+
+  # Edge-nginx: единственная точка входа из интернета. Терминирует HTTPS,
+  # проксирует / → web и /api/ → api. Конфиг генерится из шаблона: nginx-образ
+  # при старте подставляет ${DUCKDNS_DOMAIN} через envsubst (templates → conf.d).
+  proxy:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DUCKDNS_DOMAIN: ${DUCKDNS_DOMAIN}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - web
+      - api
+
+  # Certbot: раз в 12 часов пытается продлить сертификат Let's Encrypt.
+  # Первичный выпуск делает scripts/init-letsencrypt.sh (см. README).
+  certbot:
+    image: certbot/certbot
+    restart: always
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:

@@ -1,0 +1,182 @@
+# tracker-deploy
+
+Инфраструктура для деплоя **Tracker: AI Budget App** на свой VPS.
+Поднимает за одним доменом фронт (`budget-web`), бэк (`budget-api`) и Postgres,
+с HTTPS от Let's Encrypt.
+
+```
+Интернет (https) → proxy (nginx) ┬→ /     → web (статика фронта)
+                                 └→ /api/ → api (NestJS) → db (postgres)
+```
+
+Репозитории `budget-web`, `budget-api` и `tracker-deploy` должны лежать рядом:
+
+```
+tracker/
+├── budget-web/
+├── budget-api/
+└── tracker-deploy/   ← ты здесь
+```
+
+---
+
+## Этап 1. Поднять стенд руками
+
+### 1. Сервер (Timeweb Cloud)
+
+1. Зарегистрируйся на https://timeweb.cloud.
+2. **Облачные серверы → Создать**:
+   - ОС: **Ubuntu 24.04**;
+   - Локация: **Европа** (Амстердам или Франкфурт) — важно, чтобы голосовой ввод
+     ходил на OpenRouter без геоблока;
+   - Тариф: **2 vCPU / 4 ГБ RAM / NVMe** (не минималку — на 1 ГБ сборка образов
+     на сервере падает с OOM);
+   - Виртуализация **KVM** (у Timeweb по умолчанию — Docker заведётся).
+3. Добавь свой SSH-ключ (`cat ~/.ssh/id_ed25519.pub`; если ключа нет —
+   `ssh-keygen -t ed25519`).
+4. Создай сервер, запомни его публичный IPv4.
+5. Открой порты **22** (SSH), **80** (HTTP), **443** (HTTPS): в Timeweb это
+   раздел **Файрвол** в панели, либо `ufw` на самом сервере. 80/443 обязательны
+   для выпуска сертификата Let's Encrypt.
+
+### 2. Домен (DuckDNS)
+
+1. Зайди на https://www.duckdns.org через GitHub/Google.
+2. Придумай поддомен, напр. `budget-tracker` → получишь
+   `budget-tracker.duckdns.org`.
+3. В поле **current ip** впиши IP сервера, нажми **update**.
+4. Проверь: `ping budget-tracker.duckdns.org` должен резолвиться в твой IP.
+
+### 3. Подготовка сервера
+
+Зайди на сервер: `ssh root@<IP>`. Установи Docker:
+
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+Склонируй три репозитория рядом:
+
+```bash
+mkdir -p ~/tracker && cd ~/tracker
+git clone <url budget-web> budget-web
+git clone <url budget-api> budget-api
+git clone <url tracker-deploy> tracker-deploy
+cd tracker-deploy
+```
+
+### 4. Секреты
+
+```bash
+cp .env.prod.example .env.prod
+nano .env.prod
+```
+
+Заполни:
+- `DUCKDNS_DOMAIN` — твой поддомен;
+- `CERTBOT_EMAIL` — почта (Let's Encrypt шлёт туда уведомления об истечении);
+- `POSTGRES_PASSWORD` — надёжный пароль, и тот же пароль в `DATABASE_URL`;
+- `JWT_SECRET` — сгенерируй новый: `openssl rand -hex 64`;
+- `NEXARA_API_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — перенеси из
+  локального `budget-api/.env`.
+
+### 5. Выпуск сертификата и запуск
+
+```bash
+chmod +x scripts/init-letsencrypt.sh
+./scripts/init-letsencrypt.sh                       # разовый выпуск TLS-сертификата
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+Открой `https://<твой-домен>.duckdns.org` — с компьютера и с телефона.
+Проверь логин, создание категории/транзакции и голосовой ввод (он требует
+именно валидный HTTPS, который мы только что и настроили).
+
+### Полезные команды
+
+```bash
+# статус и логи
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api
+
+# релиз правок (пока вручную — на Этапе 2 заменим на git push)
+cd ~/tracker/budget-api && git pull        # или budget-web
+cd ~/tracker/tracker-deploy
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+Миграции Prisma накатываются автоматически при старте контейнера `api`
+(см. `budget-api/docker-entrypoint.sh`).
+
+---
+
+## Этап 2. Кнопка релиза (CI/CD)
+
+Цель: `git push` в `main` → GitHub сам собирает образ, заливает на сервер и
+перезапускает. Подключаем, когда Этап 1 уже работает.
+
+### 2.1. Сервер тянет образы из GitHub Container Registry
+
+Замени в `docker-compose.prod.yml` у сервисов `web` и `api` блок `build:` на
+`image:` (подставь свой GitHub-логин):
+
+```yaml
+  api:
+    image: ghcr.io/<user>/budget-api:latest
+    # build: убрать
+  web:
+    image: ghcr.io/<user>/budget-web:latest
+    # build: убрать
+```
+
+### 2.2. Workflow в каждом репо
+
+Создай `.github/workflows/deploy.yml` в `budget-api` (и аналогичный в
+`budget-web`, поменяв имя образа и путь):
+
+```yaml
+name: deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/budget-api:latest
+      # передеплой на сервере
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ~/tracker/tracker-deploy
+            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+```
+
+### 2.3. Секреты GitHub
+
+В обоих репо **Settings → Secrets and variables → Actions** добавь:
+- `SSH_HOST` — IP сервера;
+- `SSH_USER` — `root` (или созданный деплой-пользователь);
+- `SSH_KEY` — приватный SSH-ключ, чей публичный лежит на сервере.
+
+Секреты приложения (`JWT_SECRET`, API-ключи) в CI **не** передаются — они
+остаются в `.env.prod` на сервере.
+
+После этого релиз = `git push`. Через пару минут правка на стенде.

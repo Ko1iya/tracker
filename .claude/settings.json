@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in */src/*|*/prisma/schema.prisma|*/docker-compose.yml) printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"SPEC.md must stay in sync — update the SPEC.md of the affected subproject (budget-api/ or budget-web/) now in this same response if file purpose, public API, Prisma schema, or docker-compose.yml changed. Rules in CLAUDE.md.\"}}';; esac"
+          }
+        ]
+      }
+    ]
+  }
+}

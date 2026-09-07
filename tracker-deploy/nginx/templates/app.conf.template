@@ -1,0 +1,50 @@
+# Edge-nginx конфиг. Это ШАБЛОН: nginx-образ при старте подставит ${DUCKDNS_DOMAIN}
+# из окружения (механизм templates официального образа nginx) и положит результат
+# в /etc/nginx/conf.d/app.conf. Переменные nginx ($host, $uri и т.п.) НЕ подставляются —
+# envsubst трогает только переменные, реально заданные в окружении контейнера.
+
+# --- HTTP (порт 80): ACME-челлендж + редирект всего остального на HTTPS ---
+server {
+    listen 80;
+    server_name ${DUCKDNS_DOMAIN};
+
+    # Let's Encrypt проверяет владение доменом, обращаясь сюда по HTTP.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# --- HTTPS (порт 443): основной трафик ---
+server {
+    listen 443 ssl;
+    server_name ${DUCKDNS_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DUCKDNS_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DUCKDNS_DOMAIN}/privkey.pem;
+
+    # Голосовой ввод шлёт аудиофайлы — поднимаем лимит тела запроса.
+    client_max_body_size 25m;
+
+    # /api/* → бэк. Завершающий слеш в proxy_pass срезает префикс /api:
+    # запрос /api/auth/login уходит на бэк как /auth/login (бэк живёт на корне).
+    location /api/ {
+        proxy_pass http://api:3000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # всё остальное → статика фронта (внутренний web-контейнер)
+    location / {
+        proxy_pass http://web:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

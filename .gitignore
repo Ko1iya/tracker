@@ -1,0 +1,12 @@
+# Правила уровня монорепо. У каждого подпроекта свой .gitignore
+# (budget-api/, budget-web/, tracker-deploy/) — они продолжают работать
+# относительно своих каталогов.
+
+.DS_Store
+*.log
+
+# Локальные настройки Claude Code (у каждой машины свои)
+.claude/settings.local.json
+
+# Скачанная документация OpenRouter — справочник, не часть проекта
+openrouter.md
