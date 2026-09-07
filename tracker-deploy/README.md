@@ -9,7 +9,8 @@
                                  └→ /api/ → api (NestJS) → db (postgres)
 ```
 
-Репозитории `budget-web`, `budget-api` и `tracker-deploy` должны лежать рядом:
+Всё лежит в одном монорепозитории — `docker-compose.prod.yml` собирает образы
+из соседних каталогов:
 
 ```
 tracker/
@@ -55,15 +56,15 @@ tracker/
 curl -fsSL https://get.docker.com | sh
 ```
 
-Склонируй три репозитория рядом:
+Склонируй монорепозиторий:
 
 ```bash
-mkdir -p ~/tracker && cd ~/tracker
-git clone <url budget-web> budget-web
-git clone <url budget-api> budget-api
-git clone <url tracker-deploy> tracker-deploy
-cd tracker-deploy
+git clone git@github.com:Ko1iya/tracker.git ~/tracker
+cd ~/tracker/tracker-deploy
 ```
+
+Если ключа этой машины нет на GitHub — клонируй по HTTPS:
+`git clone https://github.com/Ko1iya/tracker.git ~/tracker`.
 
 ### 4. Секреты
 
@@ -100,7 +101,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api
 
 # релиз правок (пока вручную — на Этапе 2 заменим на git push)
-cd ~/tracker/budget-api && git pull        # или budget-web
+cd ~/tracker && git pull
 cd ~/tracker/tracker-deploy
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
@@ -129,22 +130,42 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
     # build: убрать
 ```
 
-### 2.2. Workflow в каждом репо
+### 2.2. Один workflow на монорепо
 
-Создай `.github/workflows/deploy.yml` в `budget-api` (и аналогичный в
-`budget-web`, поменяв имя образа и путь):
+Проект живёт в одном репозитории, поэтому workflow тоже один —
+`.github/workflows/deploy.yml` в корне. Ключевая деталь: **path-фильтры**, чтобы
+правка фронта не пересобирала бэк и наоборот. `dorny/paths-filter` смотрит, что
+именно изменилось в пуше, и джобы сборки запускаются условно.
 
 ```yaml
 name: deploy
 on:
   push:
     branches: [main]
+
 jobs:
-  build-and-deploy:
+  # что изменилось в этом пуше
+  changes:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'budget-api/**'
+            web:
+              - 'budget-web/**'
+
+  build-api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -154,24 +175,58 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./budget-api          # ← контекст сборки, не корень репо
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/budget-api:latest
-      # передеплой на сервере
+
+  build-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./budget-web
+          build-args: VITE_API_URL=/api
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/budget-web:latest
+
+  # передеплой на сервере — после всех сборок, которые реально запускались
+  deploy:
+    needs: [build-api, build-web]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd ~/tracker/tracker-deploy
+            cd ~/tracker && git pull
+            cd tracker-deploy
             docker compose --env-file .env.prod -f docker-compose.prod.yml pull
             docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
+Про `if: always() && !failure() && !cancelled()` в джобе `deploy`: без него
+деплой пропустится, если хоть одна из сборок была skipped (а так будет почти
+всегда — меняется обычно что-то одно). Такая формула означает «запускайся, если
+ничего не упало», считая пропущенные джобы нормой.
+
+`git pull` на сервере нужен, чтобы подтянуть правки самой инфраструктуры
+(`docker-compose.prod.yml`, конфиг nginx) — образы приложений приезжают из ghcr.
+
 ### 2.3. Секреты GitHub
 
-В обоих репо **Settings → Secrets and variables → Actions** добавь:
+В репозитории **Settings → Secrets and variables → Actions** добавь:
 - `SSH_HOST` — IP сервера;
 - `SSH_USER` — `root` (или созданный деплой-пользователь);
 - `SSH_KEY` — приватный SSH-ключ, чей публичный лежит на сервере.
