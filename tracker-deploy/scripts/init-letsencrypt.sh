@@ -34,8 +34,11 @@ CERT_DIR="./certbot/conf/live/$DUCKDNS_DOMAIN"
 
 echo "==> 1/4 Кладу временный самоподписанный сертификат для $DUCKDNS_DOMAIN"
 mkdir -p "$CERT_DIR" ./certbot/www
-docker run --rm -v "$(pwd)/certbot/conf:/etc/letsencrypt" certbot/certbot \
-  sh -c "openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+# У образа certbot/certbot ENTRYPOINT = сама программа certbot, поэтому здесь
+# переопределяем его на sh (--entrypoint sh), иначе openssl-команда уйдёт
+# как аргумент в certbot и он упадёт с "Unable to open config file".
+docker run --rm -v "$(pwd)/certbot/conf:/etc/letsencrypt" --entrypoint sh certbot/certbot \
+  -c "openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
     -keyout '/etc/letsencrypt/live/$DUCKDNS_DOMAIN/privkey.pem' \
     -out '/etc/letsencrypt/live/$DUCKDNS_DOMAIN/fullchain.pem' \
     -subj '/CN=localhost'"
@@ -45,11 +48,15 @@ $COMPOSE up -d proxy
 
 echo "==> 3/4 Удаляю заглушку и запрашиваю настоящий сертификат у Let's Encrypt"
 rm -rf "$CERT_DIR"
-$COMPOSE run --rm --entrypoint "\
-  certbot certonly --webroot -w /var/www/certbot \
+# В compose сервису certbot задан свой entrypoint (цикл renew), поэтому для
+# разового выпуска переопределяем entrypoint на бинарь certbot, а сабкоманду и
+# флаги передаём как аргументы (в compose v2 строка с пробелами в --entrypoint
+# не разбивается на слова, поэтому нельзя всё писать одной строкой).
+$COMPOSE run --rm --entrypoint certbot certbot \
+  certonly --webroot -w /var/www/certbot \
     --email $CERTBOT_EMAIL \
     -d $DUCKDNS_DOMAIN \
-    --agree-tos --no-eff-email --force-renewal" certbot
+    --agree-tos --no-eff-email --force-renewal
 
 echo "==> 4/4 Перезагружаю nginx с боевым сертификатом"
 $COMPOSE exec proxy nginx -s reload
