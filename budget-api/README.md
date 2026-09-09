@@ -27,4 +27,4 @@ npm run start:dev             # http://localhost:3000
 
 В проде запуск другой — образ собирается по `Dockerfile`, миграции накатывает
 `docker-entrypoint.sh`, точка входа `dist/src/main.js` (не `dist/main.js`).
-Подробности — в [`../tracker-deploy/README.md`](../tracker-deploy/README.md).
+Подробности — в [`../tracker-deploy/README.md`](../tracker-deploy/README.md)

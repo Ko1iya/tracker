@@ -11,4 +11,4 @@ TypeScript**, Tailwind CSS, shadcn/ui, React Router, TanStack Query, axios.
 
 ➡️ **[`../README.md`](../README.md)** — единый план-роадмап и статус по этапам.
 
-Актуальная карта файлов и маршрутов — в [`SPEC.md`](./SPEC.md).
+Актуальная карта файлов и маршрутов — в [`SPEC.md`](./SPEC.md)
