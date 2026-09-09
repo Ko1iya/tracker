@@ -238,6 +238,23 @@ all jobs** — GitHub перезапустит его на том же комм�
   `Ko1iya`, поэтому `${{ github.repository_owner }}` в теге даёт ошибку
   `invalid reference format`. В воркфлоу владелец задан явно:
   `env.OWNER: ko1iya`.
+- **SSH-ключ для CI не должен быть под passphrase.** Личный `~/.ssh/id_ed25519`
+  не подходит: на маке пароль к нему молча подставляет Keychain
+  (`UseKeychain yes` в `~/.ssh/config`), поэтому кажется, что пароля нет, — а на
+  раннере Keychain'а нет и ввести его некому. В логе это выглядит как
+  `ssh.ParsePrivateKey: this private key is passphrase protected`, следом
+  `handshake failed ... attempted methods [none]`. Решение — отдельный
+  деплой-ключ: `ssh-keygen -t ed25519 -f ~/.ssh/tracker_deploy -N ""`, публичную
+  половину на сервер, приватную в секрет `SSH_KEY`. Отзывается одной строкой из
+  `authorized_keys`, личный ключ не затрагивает.
+  Проверять шифрование ключа надо через `ssh-keygen -y -P "" -f <файл>`, а не
+  грепом по `ENCRYPTED`: у современных OPENSSH-ключей этой метки в теле нет.
+- **`ssh-copy-id` врёт про «ключ уже установлен».** С `Host *` в `~/.ssh/config`
+  и заряженным агентом он проверяет установленность так: пробует зайти новым
+  ключом — а заходит на самом деле старым, и делает вывод, что добавлять нечего
+  (`All keys were skipped because they already exist`). Добавлять с `-f`,
+  проверять с `-o IdentitiesOnly=yes` — этот флаг запрещает подсовывать ключи из
+  агента и повторяет условия CI.
 - **Кеш слоёв требует отдельного билдера.** `cache-from/cache-to: type=gha` без
   шага `docker/setup-buildx-action` роняет сборку с
   `ERROR: Cache export is not supported for the docker driver`: дефолтный
