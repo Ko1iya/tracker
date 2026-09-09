@@ -237,6 +237,10 @@ all jobs** — GitHub перезапустит его на том же комм�
 - **`ghcr` требует имя владельца строчными буквами.** Логин на GitHub —
   `Ko1iya`, поэтому `${{ github.repository_owner }}` в теге даёт ошибку
   `invalid reference format`. В воркфлоу владелец задан явно: `env.OWNER: ko1iya`.
+- **Кеш слоёв требует отдельного билдера.** `cache-from/cache-to: type=gha` без
+  шага `docker/setup-buildx-action` роняет сборку с `ERROR: Cache export is not
+  supported for the docker driver`: дефолтный драйвер `docker` умеет только
+  собирать локально. Нужен драйвер `docker-container`, его и ставит этот шаг.
 - **`docker compose up -d` без `--build`.** Флага больше нет и быть не должно:
   собирать нечего, а `--build` на `image:`-сервисе просто ничего не делает и
   маскирует то, что свежий образ не скачался. Скачивает `pull`.
