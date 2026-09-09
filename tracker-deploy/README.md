@@ -246,9 +246,9 @@ all jobs** — GitHub перезапустит его на том же комм�
   `handshake failed ... attempted methods [none]`. Решение — отдельный
   деплой-ключ: `ssh-keygen -t ed25519 -f ~/.ssh/tracker_deploy -N ""`, публичную
   половину на сервер, приватную в секрет `SSH_KEY`. Отзывается одной строкой из
-  `authorized_keys`, личный ключ не затрагивает.
-  Проверять шифрование ключа надо через `ssh-keygen -y -P "" -f <файл>`, а не
-  грепом по `ENCRYPTED`: у современных OPENSSH-ключей этой метки в теле нет.
+  `authorized_keys`, личный ключ не затрагивает. Проверять шифрование ключа надо
+  через `ssh-keygen -y -P "" -f <файл>`, а не грепом по `ENCRYPTED`: у
+  современных OPENSSH-ключей этой метки в теле нет.
 - **`ssh-copy-id` врёт про «ключ уже установлен».** С `Host *` в `~/.ssh/config`
   и заряженным агентом он проверяет установленность так: пробует зайти новым
   ключом — а заходит на самом деле старым, и делает вывод, что добавлять нечего
@@ -263,3 +263,101 @@ all jobs** — GitHub перезапустит его на том же комм�
 - **`docker compose up -d` без `--build`.** Флага больше нет и быть не должно:
   собирать нечего, а `--build` на `image:`-сервисе просто ничего не делает и
   маскирует то, что свежий образ не скачался. Скачивает `pull`.
+
+---
+
+## Бэкапы
+
+`scripts/backup.sh` на сервере, ежедневно в 03:30 по cron: `pg_dump -Fc` в
+`/var/backups/tracker`, шифрование `gpg --symmetric`, выгрузка в Timeweb S3
+(remote `timeweb`, бакет `tracker-backups-f`), ретеншн 30 дней локально и в
+бакете. По воскресеньям туда же уезжает архив `.env.prod` + `certbot/conf`. Лог
+— `/var/log/tracker-backup.log`.
+
+Секреты, которых нет в git:
+
+- пароль gpg — на сервере в `/root/.config/tracker-backup.passphrase` (chmod
+  600), копия в менеджере паролей под именем **`tracker-backup-gpg`**. Без него
+  облачные копии не расшифровать: если сервер потерян, восстановление идёт
+  только паролем из менеджера паролей на мак.
+- ключи S3 и endpoint — в `/root/.config/rclone/rclone.conf` (chmod 600).
+
+Скрипты лежат в git (`tracker-deploy/scripts/`) и приезжают на сервер обычным
+`git pull` при деплое — редактировать их на сервере руками не надо. Бит
+исполнения хранится в git, `chmod +x` после `pull` не требуется.
+
+### Проверка воскресной ветки
+
+Архив с `.env.prod` и `certbot/conf` собирается только в воскресенье
+(`date +%u` = 7). Чтобы проверить ветку в любой день, есть переменная
+окружения — условие в скрипте править не надо:
+
+```bash
+FORCE_SECRETS=1 /root/tracker/tracker-deploy/scripts/backup.sh
+rclone lsl timeweb:tracker-backups-f/secrets/   # должен появиться свежий tar.gz
+```
+
+### Восстановление
+
+`scripts/restore.sh` — обратная процедура: находит копию (локально или в
+бакете), расшифровывает, снимает страховочный дамп текущей базы, гасит `api`,
+разворачивает `pg_restore --clean --if-exists --no-owner --single-transaction` и
+поднимает `api` обратно. Перед перезаписью боевой базы требует ввести слово
+`restore`; из cron не запустится принципиально — нужен терминал.
+
+**Сценарий А: откатить базу на вчерашнюю копию** (данные испортились, сервер
+жив).
+
+```bash
+cd /root/tracker/tracker-deploy
+./scripts/restore.sh                                  # список доступных копий
+./scripts/restore.sh tracker-db-2026-09-08_033001.dump # локальная копия
+./scripts/restore.sh tracker-db-2026-09-08_033001.dump.gpg  # или из бакета
+```
+
+Страховочный дамп состояния «до» останется в `/var/backups/tracker` с префиксом
+`tracker-db-prerestore-` — если откатились не туда, тем же скриптом вернуться
+обратно.
+
+**Сценарий Б: поднять всё с нуля на новом сервере** (старого больше нет).
+Понадобятся: пароль gpg из менеджера паролей (`tracker-backup-gpg`) и ключи S3.
+
+1. Пройти «Этап 1» этого README до момента запуска — сервер, домен, docker,
+   репозиторий в `/root/tracker`.
+2. Восстановить секреты из воскресного архива (в нём `.env.prod` и
+   `certbot/conf`), если своей копии `.env.prod` нет:
+
+   ```bash
+   rclone lsl timeweb:tracker-backups-f/secrets/
+   rclone copy timeweb:tracker-backups-f/secrets/tracker-secrets-2026-09-06.tar.gz .
+   gpg --decrypt --output secrets.tar.gz tracker-secrets-2026-09-06.tar.gz.gpg
+   tar -xzf secrets.tar.gz -C /root/tracker/tracker-deploy
+   ```
+
+3. Поднять стенд: `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d`.
+   Контейнер `db` создаст пустую базу `budget_db` и роль `myuser` из `.env.prod`
+   — это важно, см. грабли ниже. `api` накатит миграции.
+4. Восстановить данные: `./scripts/restore.sh tracker-db-<дата>.dump.gpg`.
+5. Сверить: `docker compose exec -T db psql -U myuser -d budget_db -c
+   'select count(*) from "User"; select count(*) from "Transaction";'`
+
+Восстановление проверено полностью 9 сентября 2026 на макбуке, по сценарию
+«сервера больше нет»: скачали из бакета, расшифровали паролем из менеджера,
+подняли чистый `postgres:16` на порту 5433, развернули, сверили числа с продом.
+
+### Грабли бэкапов
+
+- **`pg_dump` не выгружает роли.** Роли — объекты кластера, а дамп снимается с
+  одной базы; внутри только ссылки на владельца `myuser`. Поэтому
+  восстанавливать нужно либо в кластер, где роль уже создана (её создаёт
+  `POSTGRES_USER` при первом старте контейнера), либо с `--no-owner` — как и
+  делает `restore.sh`.
+- **Custom-дамп не содержит `CREATE DATABASE`.** База `budget_db` должна
+  существовать до `pg_restore`; в нашем случае её создаёт `POSTGRES_DB`.
+- **`no_check_bucket = true` в `rclone.conf` обязателен.** Без него rclone
+  перед заливкой пытается создать бакет и падает с
+  `InvalidLocationConstraint`: Timeweb не принимает регион `ru-1` в запросе
+  `CreateBucket`.
+- **Пароль gpg копируется целиком.** Один раз в менеджер паролей уехал пароль с
+  прилипшим хвостом от соседней команды — расшифровка падала с
+  `Bad session key`. Пароль — 44 символа base64, заканчивается на `=`.
