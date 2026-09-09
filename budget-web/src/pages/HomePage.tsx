@@ -29,7 +29,9 @@ function HomePage() {
   return (
     <section className='mx-auto flex w-full max-w-2xl flex-col gap-6'>
       <div className='rounded-xl border bg-card p-5 shadow-sm'>
-        <p className='text-sm text-muted-foreground'>Расходы за этот месяц</p>
+        <p className='text-sm text-muted-foreground'>
+          Расходы за текущий месяц
+        </p>
         <p className='text-3xl font-bold'>{formatCurrency(spent, "RUB")}</p>
       </div>
 

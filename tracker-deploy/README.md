@@ -1,16 +1,16 @@
 # tracker-deploy
 
-Инфраструктура для деплоя **Tracker: AI Budget App** на свой VPS.
-Поднимает за одним доменом фронт (`budget-web`), бэк (`budget-api`) и Postgres,
-с HTTPS от Let's Encrypt.
+Инфраструктура для деплоя **Tracker: AI Budget App** на свой VPS. Поднимает за
+одним доменом фронт (`budget-web`), бэк (`budget-api`) и Postgres, с HTTPS от
+Let's Encrypt.
 
 ```
 Интернет (https) → proxy (nginx) ┬→ /     → web (статика фронта)
                                  └→ /api/ → api (NestJS) → db (postgres)
 ```
 
-Всё лежит в одном монорепозитории — `docker-compose.prod.yml` собирает образы
-из соседних каталогов:
+Всё лежит в одном монорепозитории — `docker-compose.prod.yml` собирает образы из
+соседних каталогов:
 
 ```
 tracker/
@@ -21,24 +21,46 @@ tracker/
 
 ---
 
+## Состояние стенда (8 сентября 2026)
+
+Стенд **развёрнут и работает**: https://trackerbyfialkovskiy.duckdns.org —
+проверено с компьютера и с телефона, включая голосовой ввод.
+
+- **Хостер:** FirstVDS, тариф VDS-KVM-NVMe-Разгон-10 (2 ядра / 4 ГБ / 60 ГБ
+  NVMe), Ubuntu 24.04, дата-центр Амстердам (EU). IP доступен из РФ напрямую (IP
+  — в панели FirstVDS).
+- **Домен:** trackerbyfialkovskiy.duckdns.org (DuckDNS).
+- **Сертификат:** Let's Encrypt, действует до 07.12.2026, продление — сервисом
+  `certbot` в compose.
+- **Доступ:** SSH по ключу под root (`ssh root@<IP>`).
+- **Секреты:** в `.env.prod` на сервере (в git не попадает).
+
+Инструкция ниже написана хостеро-нейтрально — шаги от провайдера не зависят.
+
+---
+
 ## Этап 1. Поднять стенд руками
 
-### 1. Сервер (Timeweb Cloud)
+### 1. Сервер
 
-1. Зарегистрируйся на https://timeweb.cloud.
-2. **Облачные серверы → Создать**:
+> Стенд поднят на **FirstVDS** (Амстердам). Шаги хостеро-нейтральны — у любого
+> провайдера то же самое. Timeweb отпал по оплате, OVH — по KYC; берём
+> провайдера с не-РФ локацией и удобной оплатой.
+
+1. Зарегистрируйся у выбранного провайдера.
+2. **Создай сервер**:
    - ОС: **Ubuntu 24.04**;
-   - Локация: **Европа** (Амстердам или Франкфурт) — важно, чтобы голосовой ввод
+   - Локация: **не РФ** (использован Амстердам) — важно, чтобы голосовой ввод
      ходил на OpenRouter без геоблока;
    - Тариф: **2 vCPU / 4 ГБ RAM / NVMe** (не минималку — на 1 ГБ сборка образов
      на сервере падает с OOM);
-   - Виртуализация **KVM** (у Timeweb по умолчанию — Docker заведётся).
+   - Виртуализация **KVM** — чтобы Docker завёлся.
 3. Добавь свой SSH-ключ (`cat ~/.ssh/id_ed25519.pub`; если ключа нет —
    `ssh-keygen -t ed25519`).
 4. Создай сервер, запомни его публичный IPv4.
-5. Открой порты **22** (SSH), **80** (HTTP), **443** (HTTPS): в Timeweb это
-   раздел **Файрвол** в панели, либо `ufw` на самом сервере. 80/443 обязательны
-   для выпуска сертификата Let's Encrypt.
+5. Открой порты **22** (SSH), **80** (HTTP), **443** (HTTPS): в панели
+   провайдера (раздел файрвола) либо через `ufw` на самом сервере. 80/443
+   обязательны для выпуска сертификата Let's Encrypt.
 
 ### 2. Домен (DuckDNS)
 
@@ -56,15 +78,13 @@ tracker/
 curl -fsSL https://get.docker.com | sh
 ```
 
-Склонируй монорепозиторий:
+Склонируй монорепозиторий (репозиторий публичный — проще по HTTPS, ключ на
+сервере не нужен):
 
 ```bash
-git clone git@github.com:Ko1iya/tracker.git ~/tracker
+git clone https://github.com/Ko1iya/tracker.git ~/tracker
 cd ~/tracker/tracker-deploy
 ```
-
-Если ключа этой машины нет на GitHub — клонируй по HTTPS:
-`git clone https://github.com/Ko1iya/tracker.git ~/tracker`.
 
 ### 4. Секреты
 
@@ -74,6 +94,7 @@ nano .env.prod
 ```
 
 Заполни:
+
 - `DUCKDNS_DOMAIN` — твой поддомен;
 - `CERTBOT_EMAIL` — почта (Let's Encrypt шлёт туда уведомления об истечении);
 - `POSTGRES_PASSWORD` — надёжный пароль, и тот же пароль в `DATABASE_URL`;
@@ -89,9 +110,9 @@ chmod +x scripts/init-letsencrypt.sh
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
-Открой `https://<твой-домен>.duckdns.org` — с компьютера и с телефона.
-Проверь логин, создание категории/транзакции и голосовой ввод (он требует
-именно валидный HTTPS, который мы только что и настроили).
+Открой `https://<твой-домен>.duckdns.org` — с компьютера и с телефона. Проверь
+логин, создание категории/транзакции и голосовой ввод (он требует именно
+валидный HTTPS, который мы только что и настроили).
 
 ### Полезные команды
 
@@ -106,8 +127,28 @@ cd ~/tracker/tracker-deploy
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
-Миграции Prisma накатываются автоматически при старте контейнера `api`
-(см. `budget-api/docker-entrypoint.sh`).
+Миграции Prisma накатываются автоматически при старте контейнера `api` (см.
+`budget-api/docker-entrypoint.sh`).
+
+### ⚠️ TODO: починить `scripts/init-letsencrypt.sh`
+
+Скрипт **сейчас нерабочий** — при первом реальном прогоне (8 сентября 2026)
+выпуск сертификата пришлось доделывать руками. Две проблемы:
+
+1. **Entrypoint образа certbot** (частично исправлено, commit d1b3420): у образа
+   `certbot/certbot` свой `ENTRYPOINT=certbot`, поэтому нельзя писать
+   `docker run certbot/certbot sh -c "..."` — команда уйдёт аргументом в
+   certbot. Нужно `--entrypoint sh` (для openssl-заглушки) и
+   `--entrypoint certbot` (для `certonly`). В compose v2 строка с пробелами в
+   `--entrypoint` не разбивается — сабкоманду и флаги передавать отдельными
+   аргументами после имени сервиса.
+
+2. **Замкнутый круг заглушки** (главное, ещё не исправлено): nginx-конфиг
+   монолитный — блок `listen 443 ssl` роняет весь nginx (включая порт 80 для
+   ACME-challenge), если файла сертификата нет. А заглушку надо удалить перед
+   выпуском (certbot не пишет в непустую `live/<домен>/`). С `restart: always`
+   контейнер `proxy` в окне без сертификата уходит в crash-loop → порт 80
+   умирает → challenge проваливается. Именно на этом скрипт и падает.
 
 ---
 
@@ -122,12 +163,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 `image:` (подставь свой GitHub-логин):
 
 ```yaml
-  api:
-    image: ghcr.io/<user>/budget-api:latest
-    # build: убрать
-  web:
-    image: ghcr.io/<user>/budget-web:latest
-    # build: убрать
+api:
+  image: ghcr.io/<user>/budget-api:latest
+  # build: убрать
+web:
+  image: ghcr.io/<user>/budget-web:latest
+  # build: убрать
 ```
 
 ### 2.2. Один workflow на монорепо
@@ -175,7 +216,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./budget-api          # ← контекст сборки, не корень репо
+          context: ./budget-api # ← контекст сборки, не корень репо
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/budget-api:latest
 
@@ -227,6 +268,7 @@ jobs:
 ### 2.3. Секреты GitHub
 
 В репозитории **Settings → Secrets and variables → Actions** добавь:
+
 - `SSH_HOST` — IP сервера;
 - `SSH_USER` — `root` (или созданный деплой-пользователь);
 - `SSH_KEY` — приватный SSH-ключ, чей публичный лежит на сервере.
