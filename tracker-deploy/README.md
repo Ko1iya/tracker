@@ -121,10 +121,11 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api
 
-# релиз правок (пока вручную — на Этапе 2 заменим на git push)
+# аварийный релиз руками (обычный релиз — это git push, см. Этап 2)
 cd ~/tracker && git pull
 cd ~/tracker/tracker-deploy
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
 Миграции Prisma накатываются автоматически при старте контейнера `api` (см.
@@ -151,129 +152,91 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
    умирает → challenge проваливается. Именно на этом скрипт и падает.
 
 ---
+## Этап 2. Кнопка релиза (CI/CD) (✅ сделано 9 сентября 2026)
 
-## Этап 2. Кнопка релиза (CI/CD)
+Релиз = `git push` в `main`. Дальше GitHub Actions собирает изменившиеся образы,
+публикует их в GitHub Container Registry (ghcr) и по ssh передеплоивает сервер.
+Весь пайплайн — в `.github/workflows/deploy.yml` в корне монорепо.
 
-Цель: `git push` в `main` → GitHub сам собирает образ, заливает на сервер и
-перезапускает. Подключаем, когда Этап 1 уже работает.
-
-### 2.1. Сервер тянет образы из GitHub Container Registry
-
-Замени в `docker-compose.prod.yml` у сервисов `web` и `api` блок `build:` на
-`image:` (подставь свой GitHub-логин):
-
-```yaml
-api:
-  image: ghcr.io/<user>/budget-api:latest
-  # build: убрать
-web:
-  image: ghcr.io/<user>/budget-web:latest
-  # build: убрать
+```
+git push → Actions собирает образ на своём раннере
+         → пушит в ghcr.io/ko1iya/budget-{api,web}
+         → по ssh: docker compose pull && up -d
 ```
 
-### 2.2. Один workflow на монорепо
+### 2.1. Сервер тянет образы, а не собирает их
 
-Проект живёт в одном репозитории, поэтому workflow тоже один —
-`.github/workflows/deploy.yml` в корне. Ключевая деталь: **path-фильтры**, чтобы
-правка фронта не пересобирала бэк и наоборот. `dorny/paths-filter` смотрит, что
-именно изменилось в пуше, и джобы сборки запускаются условно.
+У сервисов `web` и `api` в `docker-compose.prod.yml` вместо `build:` теперь
+`image: ghcr.io/ko1iya/budget-api:${API_TAG:-latest}`. Сервер перестал быть
+сборочной машиной: он скачивает готовый образ ровно так же, как уже делал это
+для `postgres:16` и `nginx:alpine`.
 
-```yaml
-name: deploy
-on:
-  push:
-    branches: [main]
+Что это поменяло:
 
-jobs:
-  # что изменилось в этом пуше
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      api: ${{ steps.filter.outputs.api }}
-      web: ${{ steps.filter.outputs.web }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            api:
-              - 'budget-api/**'
-            web:
-              - 'budget-web/**'
+- сборка уехала с 2-ядерного VPS на раннеры GitHub (там же и пропал риск OOM);
+- исходники приложений на сервере больше не нужны — код лежит внутри образа.
+  `git pull` в скрипте деплоя остался, но тянет только инфраструктуру: сам
+  compose-файл и шаблоны nginx;
+- `VITE_API_URL` переехал из `args:` в compose в `build-args:` воркфлоу. Vite
+  инлайнит переменную в бандл **на этапе сборки**, поэтому она обязана быть там,
+  где идёт сборка. Забыть её = собрать фронт с `undefined` вместо адреса API.
 
-  build-api:
-    needs: changes
-    if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: ./budget-api # ← контекст сборки, не корень репо
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/budget-api:latest
+### 2.2. Один воркфлоу на монорепо
 
-  build-web:
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: ./budget-web
-          build-args: VITE_API_URL=/api
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/budget-web:latest
+Проект живёт в одном репозитории, поэтому воркфлоу тоже один. Ключевая деталь —
+**path-фильтры**: `dorny/paths-filter` смотрит, что изменилось в пуше, и джобы
+сборки запускаются условно, чтобы правка фронта не пересобирала бэк.
 
-  # передеплой на сервере — после всех сборок, которые реально запускались
-  deploy:
-    needs: [build-api, build-web]
-    if: always() && !failure() && !cancelled()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd ~/tracker && git pull
-            cd tracker-deploy
-            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
-            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
-```
+Джобы: `changes` (что изменилось) → `build-api` / `build-web` (условные) →
+`deploy` (передеплой по ssh). Условие `if: always() && !failure() &&
+!cancelled()` у `deploy` читается как «запускайся, если ничего не упало»:
+без него деплой пропускался бы всегда, когда одна из сборок skipped, — а так
+почти каждый раз, обычно меняется что-то одно.
 
-Про `if: always() && !failure() && !cancelled()` в джобе `deploy`: без него
-деплой пропустится, если хоть одна из сборок была skipped (а так будет почти
-всегда — меняется обычно что-то одно). Такая формула означает «запускайся, если
-ничего не упало», считая пропущенные джобы нормой.
+### 2.3. Откат — кнопка на вкладке Actions
 
-`git pull` на сервере нужен, чтобы подтянуть правки самой инфраструктуры
-(`docker-compose.prod.yml`, конфиг nginx) — образы приложений приезжают из ghcr.
+Каждый образ публикуется **под двумя тегами**: `latest` (едет в прод) и
+неизменяемый `<git-sha>` (остаётся в реджистри точкой отката). Поэтому в ghcr
+копится история релизов.
 
-### 2.3. Секреты GitHub
+Откатиться: **Actions → deploy → Run workflow** → вписать git-SHA нужного
+релиза в поле `api_tag` или `web_tag` → Run. Джобы сборки при ручном запуске
+пропускаются целиком — на сервер разворачивается уже собранный образ, без
+пересборки, за секунды. Поля раздельные, потому что из-за path-фильтров образ
+под конкретным SHA есть только у того сервиса, который в том коммите менялся;
+второй сервис оставляй на `latest`. Список доступных тегов — в **Packages**
+репозитория.
 
-В репозитории **Settings → Secrets and variables → Actions** добавь:
+Альтернатива без подготовки: открыть прошлый зелёный запуск и нажать **Re-run
+all jobs** — GitHub перезапустит его на том же коммите. Но это пересборка со
+всеми её минутами, а не откат, и кнопка живёт 30 дней.
+
+Инфраструктура при откате **не** откатывается: `git pull` на сервере всё равно
+берёт свежий `main`. Если сломал compose или конфиг nginx — это чинится
+`git revert`, а не кнопкой.
+
+### 2.4. Что настроено руками в вебе GitHub
+
+**Settings → Secrets and variables → Actions:**
 
 - `SSH_HOST` — IP сервера;
 - `SSH_USER` — `root` (или созданный деплой-пользователь);
 - `SSH_KEY` — приватный SSH-ключ, чей публичный лежит на сервере.
 
 Секреты приложения (`JWT_SECRET`, API-ключи) в CI **не** передаются — они
-остаются в `.env.prod` на сервере.
+остаются в `.env.prod` на сервере. Образ публичный, вшивать в него секреты
+нельзя.
 
-После этого релиз = `git push`. Через пару минут правка на стенде.
+**Packages → budget-api / budget-web → видимость `public`.** Пакет в ghcr — это
+отдельная от репозитория сущность со своими правами. Если он приватный, серверу
+для `docker pull` понадобится `docker login ghcr.io` с Personal Access Token;
+проще сделать пакет публичным — репозиторий и так публичный.
+
+### 2.5. Грабли
+
+- **`ghcr` требует имя владельца строчными буквами.** Логин на GitHub —
+  `Ko1iya`, поэтому `${{ github.repository_owner }}` в теге даёт ошибку
+  `invalid reference format`. В воркфлоу владелец задан явно: `env.OWNER: ko1iya`.
+- **`docker compose up -d` без `--build`.** Флага больше нет и быть не должно:
+  собирать нечего, а `--build` на `image:`-сервисе просто ничего не делает и
+  маскирует то, что свежий образ не скачался. Скачивает `pull`.

@@ -1,0 +1,145 @@
+# Кнопка релиза для монорепо Tracker.
+#
+# Два режима:
+#   1. push в main    — собрать изменившиеся образы, опубликовать в ghcr, передеплоить;
+#   2. Run workflow   — ничего не собирать, а развернуть уже готовые образы по
+#                       указанным тегам. Это и есть откат на прошлый релиз.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  # Кнопка «Run workflow» на вкладке Actions: два поля с тегами образов.
+  # latest = передеплоить текущий релиз; git-SHA = откатиться на тот образ.
+  # Какие SHA доступны — видно в Packages репозитория, у каждого пакета список тегов.
+  # Поля раздельные, потому что из-за path-фильтров образы собираются независимо:
+  # для одного и того же коммита образ есть только у того сервиса, который менялся.
+  workflow_dispatch:
+    inputs:
+      api_tag:
+        description: 'Тег образа budget-api (latest или git-SHA)'
+        default: latest
+      web_tag:
+        description: 'Тег образа budget-web (latest или git-SHA)'
+        default: latest
+
+env:
+  # ghcr требует имя владельца строчными буквами, а логин на GitHub — Ko1iya,
+  # поэтому github.repository_owner здесь не годится: пишем явно.
+  OWNER: ko1iya
+
+# Два релиза не должны ехать на сервер одновременно. cancel-in-progress: false —
+# второй запуск ждёт своей очереди, а не убивает первый на середине деплоя.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  # Что изменилось в этом пуше: правка фронта не должна пересобирать бэк.
+  # При ручном запуске (откат) собирать нечего — джоба пропускается целиком.
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'budget-api/**'
+            web:
+              - 'budget-web/**'
+
+  build-api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # без этого GITHUB_TOKEN не сможет запушить образ в ghcr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Временный токен самого запуска — заводить отдельный PAT не нужно.
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./budget-api # контекст сборки — подкаталог, не корень монорепо
+          push: true
+          # Два тега на один образ: latest едет в прод, неизменяемый git-SHA
+          # остаётся в реджистри как точка отката.
+          tags: |
+            ghcr.io/${{ env.OWNER }}/budget-api:latest
+            ghcr.io/${{ env.OWNER }}/budget-api:${{ github.sha }}
+          # Кеш слоёв между запусками (npm ci не переустанавливается, пока цел
+          # package-lock.json). Живёт на стороне GitHub, настраивать нечего.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+  build-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./budget-web
+          push: true
+          # Vite инлайнит VITE_* в бандл на этапе сборки, поэтому адрес API
+          # задаётся здесь, а не в рантайме. /api — относительный путь, его
+          # проксирует edge-nginx на тот же домен.
+          build-args: VITE_API_URL=/api
+          tags: |
+            ghcr.io/${{ env.OWNER }}/budget-web:latest
+            ghcr.io/${{ env.OWNER }}/budget-web:${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    needs: [build-api, build-web]
+    # Условие читается как «запускайся, если ничего не упало». Без него деплой
+    # пропускался бы всегда, когда хоть одна сборка была skipped, — а так будет
+    # почти каждый раз: обычно меняется что-то одно.
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    env:
+      # При push контекст inputs пустой → подставится latest. При ручном
+      # запуске — то, что вписали в поля кнопки.
+      API_TAG: ${{ inputs.api_tag || 'latest' }}
+      WEB_TAG: ${{ inputs.web_tag || 'latest' }}
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          # envs пробрасывает переменные джобы в ssh-сессию — оттуда их читает
+          # интерполяция ${API_TAG:-latest} в docker-compose.prod.yml.
+          envs: API_TAG,WEB_TAG
+          script: |
+            set -e
+            # git pull нужен ради самой инфраструктуры (compose, шаблоны nginx).
+            # Код приложений на сервер больше не едет — он уже внутри образов.
+            cd ~/tracker && git pull
+            cd tracker-deploy
+            docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+            docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+            # Предыдущий latest остаётся на диске без тега — чистим, иначе за
+            # десяток релизов образы съедят заметный кусок диска.
+            docker image prune -f

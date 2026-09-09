@@ -1,9 +1,12 @@
 # Прод-оркестрация Tracker: фронт + бэк + Postgres + edge-nginx + certbot.
-# Запуск (из каталога tracker-deploy, рядом лежат budget-web и budget-api):
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# Запуск (из каталога tracker-deploy):
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 #
-# Этап 1 (стенд руками): образы web/api собираются здесь из соседних репо (build:).
-# Этап 2 (CI/CD): build: заменяется на image: ghcr.io/<user>/... (см. README).
+# Образы web/api больше не собираются на сервере: их собирает GitHub Actions и
+# публикует в ghcr, сервер только скачивает готовые (см. .github/workflows/deploy.yml).
+# Поэтому исходники приложений на сервере не нужны — git-репозиторий там нужен
+# только ради самой инфраструктуры: этого файла и шаблонов nginx.
 
 services:
   # PostgreSQL. Данные живут в именованном volume, переживают пересоздание контейнера.
@@ -26,8 +29,10 @@ services:
   # Бэк (NestJS). При старте контейнер сам накатывает миграции (docker-entrypoint.sh).
   # Все секреты приложения приходят из .env.prod.
   api:
-    build:
-      context: ../budget-api
+    # ${API_TAG:-latest} — «взять переменную API_TAG из окружения, а если её нет,
+    # подставить latest». Обычный релиз идёт под latest; при откате workflow
+    # передаёт сюда git-SHA нужного релиза (кнопка Run workflow, см. README).
+    image: ghcr.io/ko1iya/budget-api:${API_TAG:-latest}
     restart: always
     env_file: .env.prod
     depends_on:
@@ -38,10 +43,9 @@ services:
 
   # Фронт (статика за внутренним nginx). Наружу не светится — только через edge-nginx.
   web:
-    build:
-      context: ../budget-web
-      args:
-        VITE_API_URL: /api
+    # VITE_API_URL переехал отсюда в build-args workflow: Vite инлайнит переменные
+    # VITE_* в бандл на этапе сборки, а сборка теперь идёт в CI, не здесь.
+    image: ghcr.io/ko1iya/budget-web:${WEB_TAG:-latest}
     restart: always
     expose:
       - '80'
