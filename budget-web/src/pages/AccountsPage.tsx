@@ -7,10 +7,10 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  useAccounts,
-  useCreateAccount,
-  useDeleteAccount,
-  useSetDefaultAccount,
+  useAccountsQuery,
+  useCreateAccountMutation,
+  useDeleteAccountMutation,
+  useSetDefaultAccountMutation,
 } from "@/features/accounts/hooks"
 import { cn } from "@/lib/utils"
 
@@ -31,10 +31,10 @@ function pluralTransactions(n: number): string {
 // удаление с возможностью отмены. В отличие от категорий удалять можно любой
 // счёт, включая непустой и дефолтный: транзакции останутся, но без счёта.
 function AccountsPage() {
-  const { data: accounts, isLoading, isError } = useAccounts()
-  const createAcc = useCreateAccount()
-  const deleteAcc = useDeleteAccount()
-  const setDefault = useSetDefaultAccount()
+  const { data: accounts, isLoading, isError } = useAccountsQuery()
+  const createAcc = useCreateAccountMutation()
+  const deleteAcc = useDeleteAccountMutation()
+  const setDefault = useSetDefaultAccountMutation()
 
   const [title, setTitle] = useState("")
   // id подсвеченного счёта — мигаем существующим при попытке создать дубль.
@@ -142,7 +142,7 @@ function AccountsPage() {
         to='/settings'
         className='inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground'
       >
-        <ArrowLeft className='h-4 w-4' />К профилю
+        <ArrowLeft className='h-4 w-4' />К настройкам
       </Link>
 
       <h1 className='text-lg font-semibold'>Счета</h1>

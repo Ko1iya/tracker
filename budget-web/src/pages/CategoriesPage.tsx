@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { normalizeCategoryTitle } from "@/features/categories/api"
 import {
-  useCategories,
-  useCreateCategory,
-  useDeleteCategory,
+  useCategoriesQuery,
+  useCreateCategoryMutation,
+  useDeleteCategoryMutation,
 } from "@/features/categories/hooks"
 import { cn } from "@/lib/utils"
 
@@ -22,9 +22,9 @@ const UNDO_MS = 2000
 // Непустые категории удалять нельзя — бэк отвечает 409, поэтому крестик у них
 // заблокирован с подсказкой.
 function CategoriesPage() {
-  const { data: categories, isLoading, isError } = useCategories()
-  const createCat = useCreateCategory()
-  const deleteCat = useDeleteCategory()
+  const { data: categories, isLoading, isError } = useCategoriesQuery()
+  const createCat = useCreateCategoryMutation()
+  const deleteCat = useDeleteCategoryMutation()
 
   const [title, setTitle] = useState("")
   // id подсвеченной категории — мигаем существующей при попытке создать дубль.
@@ -126,7 +126,7 @@ function CategoriesPage() {
         to='/settings'
         className='inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground'
       >
-        <ArrowLeft className='h-4 w-4' />К профилю
+        <ArrowLeft className='h-4 w-4' />К настройкам
       </Link>
 
       <h1 className='text-lg font-semibold'>Категории</h1>

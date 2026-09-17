@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { Camera, House, Pencil, User } from "lucide-react"
+import { Camera, House, Pencil, Settings } from "lucide-react"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
 import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
 import { cn } from "@/lib/utils"
@@ -13,9 +13,10 @@ const fabAction = cn(fabBase, "bg-primary text-primary-foreground")
 // Подпись под кнопкой.
 const labelClass = "text-[11px] text-muted-foreground"
 
-// Нижняя панель мобильной версии (sm:hidden). Слева — Профиль (навигация
-// + настройки), справа — три способа добавить расход в едином крупном стиле:
-// вручную (диалог формы), голосом (запись), фото (распознавание чека — задел).
+// Нижняя панель мобильной версии (sm:hidden). Слева — переход в Настройки
+// (с ленты) или обратно в ленту, справа — три способа добавить расход в
+// едином крупном стиле: вручную (диалог формы), голосом (запись), фото
+// (распознавание чека — задел).
 function BottomNav() {
   const { pathname } = useLocation()
   const onFeed = pathname === "/"
@@ -44,19 +45,19 @@ function BottomNav() {
         </div>
       </div>
       <div className='flex items-end justify-between px-4 py-2'>
-        {/* Слева: на ленте — вход в профиль, иначе — возврат в ленту */}
+        {/* Слева: на ленте — вход в настройки, иначе — возврат в ленту */}
         <Link
           to={onFeed ? "/settings" : "/"}
           className='flex flex-col items-center gap-1'
         >
           <span className={cn(fabBase, "bg-muted text-foreground")}>
             {onFeed ? (
-              <User className='size-7' />
+              <Settings className='size-7' />
             ) : (
               <House className='size-7' />
             )}
           </span>
-          <span className={labelClass}>{onFeed ? "Профиль" : "Лента"}</span>
+          <span className={labelClass}>{onFeed ? "Настройки" : "Лента"}</span>
         </Link>
 
         {/* Справа: способы добавить расход */}

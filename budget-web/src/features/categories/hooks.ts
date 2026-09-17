@@ -8,21 +8,21 @@ import {
 } from "./api"
 import { categoryKeys } from "./keys"
 
-// useCategories — чтение списка категорий пользователя с кешированием под
+// useCategoriesQuery — чтение списка категорий пользователя с кешированием под
 // ключом categoryKeys.all. Используется в форме создания транзакции и на
 // экране управления категориями.
-export function useCategories() {
+export function useCategoriesQuery() {
   return useQuery({
     queryKey: categoryKeys.all,
     queryFn: getCategories,
   })
 }
 
-// useCreateCategory — создание категории с оптимистичным добавлением в кеш:
-// чип появляется мгновенно, ещё до ответа сервера. При ошибке откатываем
+// useCreateCategoryMutation — создание категории с оптимистичным добавлением в
+// кеш: чип появляется мгновенно, ещё до ответа сервера. При ошибке откатываем
 // список, после завершения инвалидируем, чтобы заменить временную запись
 // настоящей (с реальным id и счётчиком с бэка).
-export function useCreateCategory() {
+export function useCreateCategoryMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -54,11 +54,12 @@ export function useCreateCategory() {
   })
 }
 
-// useDeleteCategory — удаление категории. Оптимистичное скрытие делает сам
-// экран (на время undo-окна), поэтому здесь только вызов и инвалидация после
-// завершения — она и подтянет актуальный список при успехе, и вернёт строку
-// при ошибке (например 409, если категорию успели заполнить транзакциями).
-export function useDeleteCategory() {
+// useDeleteCategoryMutation — удаление категории. Оптимистичное скрытие делает
+// сам экран (на время undo-окна), поэтому здесь только вызов и инвалидация
+// после завершения — она и подтянет актуальный список при успехе, и вернёт
+// строку при ошибке (например 409, если категорию успели заполнить
+// транзакциями).
+export function useDeleteCategoryMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({

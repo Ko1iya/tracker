@@ -21,15 +21,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useAccounts } from "@/features/accounts/hooks"
-import { useCategories, useCreateCategory } from "@/features/categories/hooks"
+import { useAccountsQuery } from "@/features/accounts/hooks"
+import {
+  useCategoriesQuery,
+  useCreateCategoryMutation,
+} from "@/features/categories/hooks"
 import { normalizeCategoryTitle } from "@/features/categories/api"
 import type { Category } from "@/features/categories/api"
 import type { Transaction } from "./api"
 import {
-  useCreateTransaction,
-  useTransactions,
-  useUpdateTransaction,
+  useCreateTransactionMutation,
+  useTransactionsQuery,
+  useUpdateTransactionMutation,
 } from "./hooks"
 import { createTransactionSchema } from "./schema"
 import { topCategoryIds } from "./totals"
@@ -49,12 +52,12 @@ function AddTransactionDialog({
 }) {
   const isEdit = Boolean(transaction)
   const [open, setOpen] = useState(false)
-  const createTx = useCreateTransaction()
-  const updateTx = useUpdateTransaction()
-  const createCat = useCreateCategory()
-  const { data: categories } = useCategories()
-  const { data: accounts } = useAccounts()
-  const { data: transactions } = useTransactions()
+  const createTx = useCreateTransactionMutation()
+  const updateTx = useUpdateTransactionMutation()
+  const createCat = useCreateCategoryMutation()
+  const { data: categories } = useCategoriesQuery()
+  const { data: accounts } = useAccountsQuery()
+  const { data: transactions } = useTransactionsQuery()
 
   const allCategories: Category[] = useMemo(
     () => categories ?? [],

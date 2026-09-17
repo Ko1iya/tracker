@@ -137,8 +137,8 @@ account   Account? @relation(fields: [accountId], references: [id], onDelete: Se
 - `api.ts` — тип `Account`, `getAccounts`, `createAccount`, `deleteAccount`,
   `setDefaultAccount`
 - `keys.ts` — `accountKeys.all`
-- `hooks.ts` — `useAccounts`, `useCreateAccount`, `useDeleteAccount`,
-  `useSetDefaultAccount`
+- `hooks.ts` — `useAccountsQuery`, `useCreateAccountMutation`,
+  `useDeleteAccountMutation`, `useSetDefaultAccountMutation`
 
 Структура повторяет `features/categories/`, включая оптимистичное добавление в
 кеш.
@@ -160,7 +160,7 @@ account   Account? @relation(fields: [accountId], references: [id], onDelete: Se
 - `AddTransactionDialog` — селект «Счёт» последним полем, рендерится только при
   `accounts.length > 0`.
 - `TransactionDetailPage` — строка «Счёт» в списке подробностей только при
-  `tx.accountId != null`, название резолвится через `useAccounts` тем же `find`,
+  `tx.accountId != null`, название резолвится через `useAccountsQuery` тем же `find`,
   что сейчас для категории.
 
 ### 8. Документация

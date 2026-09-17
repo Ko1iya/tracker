@@ -3,7 +3,7 @@ import { Clock, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Transaction } from "./api"
-import { useSetTransactionCategory } from "./hooks"
+import { useSetTransactionCategoryMutation } from "./hooks"
 
 interface Props {
   transaction: Transaction
@@ -20,7 +20,7 @@ function minutesUntil(iso: string | null): number {
 // Заметный блок подтверждения pending-категории для страницы детали транзакции:
 // обратный отсчёт до autoConfirmAt + чипсы-предложения + поле «Своя категория».
 function CategoryConfirmPanel({ transaction }: Props) {
-  const mutation = useSetTransactionCategory()
+  const mutation = useSetTransactionCategoryMutation()
   const [custom, setCustom] = useState("")
   const [minutesLeft, setMinutesLeft] = useState(() =>
     minutesUntil(transaction.autoConfirmAt),

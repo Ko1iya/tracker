@@ -1,15 +1,15 @@
 import { Link } from "react-router-dom"
 import { Clock } from "lucide-react"
-import { useTransactions } from "@/features/transactions/hooks"
+import { useTransactionsQuery } from "@/features/transactions/hooks"
 import { monthlyExpenses } from "@/features/transactions/totals"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
 import VoiceRecorderButton from "@/features/transactions/VoiceRecorderButton"
-import { useCategories } from "@/features/categories/hooks"
+import { useCategoriesQuery } from "@/features/categories/hooks"
 import { formatCurrency, formatDate } from "@/lib/format"
 
 function HomePage() {
-  const { data, isLoading, isError } = useTransactions()
-  const { data: categories } = useCategories()
+  const { data, isLoading, isError } = useTransactionsQuery()
+  const { data: categories } = useCategoriesQuery()
 
   // Лента отдаёт только categoryId — название берём из справочника категорий.
   const categoryTitle = (id: number | null) =>

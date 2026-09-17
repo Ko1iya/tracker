@@ -3,12 +3,12 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { isAxiosError } from "axios"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useLogin } from "@/features/auth/hooks"
+import { useLoginMutation } from "@/features/auth/hooks"
 import { loginSchema, type LoginFormValues } from "@/features/auth/schema"
 
 function LoginPage() {
-  // useLogin — мутация входа (запрос + сохранение токена + навигация).
-  const mutation = useLogin()
+  // useLoginMutation — мутация входа (запрос + сохранение токена + навигация).
+  const mutation = useLoginMutation()
 
   // react-hook-form держит состояние полей без ручных useState.
   // zodResolver гоняет значения через loginSchema перед отправкой —

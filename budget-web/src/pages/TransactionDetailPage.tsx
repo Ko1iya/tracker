@@ -4,13 +4,13 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
-  useDeleteTransaction,
-  useTransaction,
+  useDeleteTransactionMutation,
+  useTransactionQuery,
 } from "@/features/transactions/hooks"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
 import CategoryConfirmPanel from "@/features/transactions/CategoryConfirmPanel"
-import { useAccounts } from "@/features/accounts/hooks"
-import { useCategories } from "@/features/categories/hooks"
+import { useAccountsQuery } from "@/features/accounts/hooks"
+import { useCategoriesQuery } from "@/features/categories/hooks"
 import { formatCurrency, formatDateTime } from "@/lib/format"
 
 function TransactionDetailPage() {
@@ -18,10 +18,10 @@ function TransactionDetailPage() {
   const txId = Number(id)
   const navigate = useNavigate()
 
-  const { data: tx, isLoading, isError } = useTransaction(txId)
-  const { data: categories } = useCategories()
-  const { data: accounts } = useAccounts()
-  const del = useDeleteTransaction()
+  const { data: tx, isLoading, isError } = useTransactionQuery(txId)
+  const { data: categories } = useCategoriesQuery()
+  const { data: accounts } = useAccountsQuery()
+  const del = useDeleteTransactionMutation()
 
   const [confirmDelete, setConfirmDelete] = useState(false)
 

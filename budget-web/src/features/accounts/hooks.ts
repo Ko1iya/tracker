@@ -9,19 +9,21 @@ import {
 import { transactionKeys } from "@/features/transactions/keys"
 import { accountKeys } from "./keys"
 
-// useAccounts — чтение списка счетов с кешированием под ключом accountKeys.all.
-// Используется на экране счетов, в диалоге транзакции и в её карточке.
-export function useAccounts() {
+// useAccountsQuery — чтение списка счетов с кешированием под ключом
+// accountKeys.all. Используется на экране счетов, в диалоге транзакции и в её
+// карточке.
+export function useAccountsQuery() {
   return useQuery({
     queryKey: accountKeys.all,
     queryFn: getAccounts,
   })
 }
 
-// useCreateAccount — создание счёта с оптимистичным добавлением в кеш: строка
-// появляется мгновенно. При ошибке откатываем, после завершения инвалидируем,
-// чтобы заменить временную запись настоящей (с реальным id и isDefault с бэка).
-export function useCreateAccount() {
+// useCreateAccountMutation — создание счёта с оптимистичным добавлением в кеш:
+// строка появляется мгновенно. При ошибке откатываем, после завершения
+// инвалидируем, чтобы заменить временную запись настоящей (с реальным id и
+// isDefault с бэка).
+export function useCreateAccountMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -55,9 +57,9 @@ export function useCreateAccount() {
   })
 }
 
-// useSetDefaultAccount — смена дефолтного счёта. Флаг переставляем в кеше сразу
-// (кнопка отзывчива), при ошибке откатываем, в конце инвалидируем.
-export function useSetDefaultAccount() {
+// useSetDefaultAccountMutation — смена дефолтного счёта. Флаг переставляем в
+// кеше сразу (кнопка отзывчива), при ошибке откатываем, в конце инвалидируем.
+export function useSetDefaultAccountMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -81,12 +83,13 @@ export function useSetDefaultAccount() {
   })
 }
 
-// useDeleteAccount — удаление счёта. Оптимистичное скрытие делает сам экран (на
-// время undo-окна), поэтому здесь только вызов и инвалидация после завершения:
+// useDeleteAccountMutation — удаление счёта. Оптимистичное скрытие делает сам
+// экран (на время undo-окна), поэтому здесь только вызов и инвалидация после
+// завершения:
 // она подтянет новый дефолт при успехе и вернёт строку при ошибке.
 // Транзакции удалённого счёта тоже меняются (accountId → null), поэтому
 // сбрасываем и их кеш.
-export function useDeleteAccount() {
+export function useDeleteAccountMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({

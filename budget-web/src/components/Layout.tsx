@@ -6,7 +6,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
   `hidden sm:inline ${isActive ? "font-semibold" : "opacity-70 hover:opacity-100"}`
 
 // Чисто визуальный каркас авторизованных страниц: шапка с навигацией + <Outlet />.
-// На мобиле навигация и действия живут в BottomNav; выход — внутри Профиля.
+// На мобиле навигация и действия живут в BottomNav; выход — внутри Настроек.
 // Проверку доступа делает ProtectedRoute выше по дереву роутов.
 function Layout() {
   return (
@@ -18,7 +18,7 @@ function Layout() {
             Главная
           </NavLink>
           <NavLink to='/settings' className={linkClass}>
-            Профиль
+            Настройки
           </NavLink>
         </nav>
       </header>

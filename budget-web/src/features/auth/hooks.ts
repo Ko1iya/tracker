@@ -4,10 +4,10 @@ import { clearToken, setToken } from "@/lib/token"
 import { login } from "./api"
 import type { LoginFormValues } from "./schema"
 
-// useLogin инкапсулирует всю логику входа: запрос к API, сохранение JWT
+// useLoginMutation инкапсулирует всю логику входа: запрос к API, сохранение JWT
 // и переход на главную. Компонент-форма получает только mutate/isPending/error
 // и не знает деталей про токены и навигацию.
-export function useLogin() {
+export function useLoginMutation() {
   const navigate = useNavigate()
 
   return useMutation({

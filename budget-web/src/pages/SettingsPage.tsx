@@ -20,7 +20,7 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "Системная", icon: Monitor },
 ]
 
-// Страница «Профиль»: настройки приложения + выход из аккаунта.
+// Страница «Настройки»: оформление, ссылки на справочники + выход из аккаунта.
 // Выход переехал сюда из шапки Layout (на мобиле шапки с навигацией нет).
 function SettingsPage() {
   const logout = useLogout()
@@ -28,7 +28,7 @@ function SettingsPage() {
 
   return (
     <section className='mx-auto flex w-full max-w-2xl flex-col gap-6'>
-      <h1 className='text-lg font-semibold'>Профиль</h1>
+      <h1 className='text-lg font-semibold'>Настройки</h1>
 
       {/* Оформление: сегментированный переключатель темы */}
       <div className='rounded-xl border bg-card p-4 shadow-sm'>
@@ -47,7 +47,7 @@ function SettingsPage() {
                   "flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-all",
                   active
                     ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className='h-4 w-4' />

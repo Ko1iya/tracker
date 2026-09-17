@@ -5,7 +5,7 @@ import { Loader2, Mic, Square } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useCreateTransactionFromVoice } from "./hooks"
+import { useCreateTransactionFromVoiceMutation } from "./hooks"
 
 // Достаём человекочитаемую причину сбоя запроса.
 function messageFromError(err: unknown): string {
@@ -66,7 +66,7 @@ function VoiceRecorderButton({
   fab?: boolean
   className?: string
 } = {}) {
-  const mutation = useCreateTransactionFromVoice()
+  const mutation = useCreateTransactionFromVoiceMutation()
   const [isRecording, setIsRecording] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
