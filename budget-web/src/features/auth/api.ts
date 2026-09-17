@@ -22,3 +22,16 @@ export async function login(
   })
   return data
 }
+
+// POST /auth/register — создаёт пользователя и сразу возвращает JWT.
+// Регистрация закрытая: 403, если email не в allowlist бэкенда.
+export async function register(
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>("/auth/register", {
+    email,
+    password,
+  })
+  return data
+}

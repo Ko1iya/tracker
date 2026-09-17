@@ -1,5 +1,6 @@
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { Link } from "react-router-dom"
 import { isAxiosError } from "axios"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,6 +59,13 @@ function LoginPage() {
         <Button type='submit' disabled={mutation.isPending}>
           {mutation.isPending ? "Входим…" : "Войти"}
         </Button>
+
+        <p className='text-center text-sm text-muted-foreground'>
+          Нет аккаунта?{" "}
+          <Link to='/register' className='underline'>
+            Зарегистрироваться
+          </Link>
+        </p>
       </form>
     </main>
   )

@@ -5,6 +5,7 @@ import AccountsPage from "./pages/AccountsPage"
 import CategoriesPage from "./pages/CategoriesPage"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
+import RegisterPage from "./pages/RegisterPage"
 import SettingsPage from "./pages/SettingsPage"
 import TransactionDetailPage from "./pages/TransactionDetailPage"
 import { Toaster } from "./components/ui/sonner"
@@ -15,6 +16,7 @@ function App() {
       <Toaster />
       <Routes>
         <Route path='/login' element={<LoginPage />} />
+        <Route path='/register' element={<RegisterPage />} />
         {/* Закрытая зона: сначала гард ProtectedRoute, внутри — визуальный Layout */}
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>

@@ -28,6 +28,7 @@ budget-api/
     │   ├── auth.module.ts                  # NestJS module: подключает Passport + JwtModule.registerAsync (читает JWT_SECRET через ConfigService)
     │   ├── auth.controller.ts              # REST endpoints POST /auth/register, POST /auth/login
     │   ├── auth.service.ts                 # bcrypt-хеши паролей + выпуск access JWT через JwtService
+    │   ├── registration-allowlist.ts        # Разбор REGISTER_ALLOWED_EMAILS и проверка, разрешён ли email к регистрации
     │   ├── dto/
     │   │   ├── register.dto.ts             # RegisterDto: email (IsEmail), password (MinLength 8)
     │   │   └── login.dto.ts                # LoginDto: email (IsEmail), password (IsString)
@@ -104,7 +105,8 @@ budget-api/
 
 - **`auth.module.ts`** — `AuthModule`. Импортирует `UsersModule`, `PassportModule` и `JwtModule.registerAsync` (читает `JWT_SECRET` и `JWT_EXPIRES_IN` через `ConfigService`). Провайдит `AuthService` и `JwtStrategy`, регистрирует `AuthController`.
 - **`auth.controller.ts`** — `AuthController` с префиксом `/auth`. Два метода: `register` (POST `/auth/register`), `login` (POST `/auth/login`, `@HttpCode(200)`). Тело валидируется через `RegisterDto`/`LoginDto`.
-- **`auth.service.ts`** — `AuthService` с injected `UsersService` и `JwtService`. `register` — проверяет уникальность email (409 Conflict), хеширует пароль `bcrypt.hash` (10 rounds), создаёт юзера, возвращает `{ accessToken, user: { id, email } }`. `login` — `findByEmail` + `bcrypt.compare`, при ошибке — 401 Unauthorized. **Внешняя интеграция:** `bcrypt`, `@nestjs/jwt`.
+- **`auth.service.ts`** — `AuthService` с injected `UsersService`, `JwtService` и `ConfigService`. `register` — сначала сверяет email с белым списком `REGISTER_ALLOWED_EMAILS` (403 Forbidden, если не в списке; проверка идёт до всего остального, чтобы по коду ответа нельзя было узнать, кто зарегистрирован), затем проверяет уникальность email (409 Conflict), хеширует пароль `bcrypt.hash` (10 rounds), создаёт юзера, возвращает `{ accessToken, user: { id, email } }`. `login` — `findByEmail` + `bcrypt.compare`, при ошибке — 401 Unauthorized. **Внешняя интеграция:** `bcrypt`, `@nestjs/jwt`.
+- **`registration-allowlist.ts`** — чистые функции белого списка регистрации. `parseAllowedEmails(raw)` разбирает переменную окружения `REGISTER_ALLOWED_EMAILS` (адреса через запятую) в массив: trim, нижний регистр, пустые куски отбрасываются. `isEmailAllowed(email, allowed)` — проверка вхождения без учёта регистра. Переменная не задана ⇒ список пуст ⇒ регистрация закрыта для всех («по умолчанию закрыто»).
 - **`dto/register.dto.ts`** — `RegisterDto`. Поля: `email` (`@IsEmail`), `password` (`@IsString`, `@MinLength(8)`).
 - **`dto/login.dto.ts`** — `LoginDto`. Поля: `email` (`@IsEmail`), `password` (`@IsString`).
 - **`strategies/jwt.strategy.ts`** — `JwtStrategy extends PassportStrategy(Strategy)`. Извлекает токен из `Authorization: Bearer …`, проверяет подпись секретом из `JWT_SECRET`. `validate(payload)` → `AuthenticatedUser { id, email }`, которая ложится в `request.user`. **Внешняя интеграция:** `passport-jwt`.
@@ -148,7 +150,7 @@ budget-api/
 | Method | Route                 | Описание                                                                                                             | Файл                         | Статус                |
 | ------ | --------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------- |
 | GET    | `/`                   | Возвращает строку-приветствие (`Hello World!!`)                                                                      | `app.controller.ts`          | реализован, публичный |
-| POST   | `/auth/register`      | Регистрация по `RegisterDto`. Возвращает `{ accessToken, user }`. 409 если email занят                               | `auth.controller.ts`         | реализован, публичный |
+| POST   | `/auth/register`      | Регистрация по `RegisterDto`. Возвращает `{ accessToken, user }`. 403 если email не в `REGISTER_ALLOWED_EMAILS` (регистрация по приглашению), 409 если email занят | `auth.controller.ts`         | реализован, публичный |
 | POST   | `/auth/login`         | Логин по `LoginDto`. Возвращает `{ accessToken, user }`. 401 при неверной паре                                       | `auth.controller.ts`         | реализован, публичный |
 | GET    | `/categories`         | Список категорий текущего пользователя, сортировка по `title` ASC. Каждый элемент содержит `transactionCount`        | `categories.controller.ts`   | реализован            |
 | POST   | `/categories`         | Создать категорию по `CreateCategoryDto` (поле `title`). 409, если у пользователя уже есть категория с таким `title` | `categories.controller.ts`   | реализован            |

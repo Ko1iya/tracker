@@ -100,7 +100,11 @@ nano .env.prod
 - `POSTGRES_PASSWORD` — надёжный пароль, и тот же пароль в `DATABASE_URL`;
 - `JWT_SECRET` — сгенерируй новый: `openssl rand -hex 64`;
 - `NEXARA_API_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` — перенеси из
-  локального `budget-api/.env`.
+  локального `budget-api/.env`;
+- `REGISTER_ALLOWED_EMAILS` — email'ы через запятую, кому разрешена
+  регистрация. Пусто ⇒ `POST /auth/register` отвечает 403 всем. Чтобы позвать
+  нового человека, допиши его адрес и перезапусти api:
+  `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d api`.
 
 ### 5. Выпуск сертификата и запуск
 

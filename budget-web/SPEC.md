@@ -29,9 +29,9 @@ budget-web/
     │   │   ├── keys.ts        # Реестр query-ключей TanStack Query (accountKeys)
     │   │   └── hooks.ts       # useAccountsQuery (чтение), useCreateAccountMutation / useSetDefaultAccountMutation (optimistic), useDeleteAccountMutation
     │   ├── auth/
-    │   │   ├── api.ts         # login() → POST /auth/login; типы AuthUser, AuthResponse
-    │   │   ├── schema.ts      # zod-схема формы входа loginSchema + тип LoginFormValues
-    │   │   └── hooks.ts       # useLoginMutation (мутация входа), useLogout (разлогин)
+    │   │   ├── api.ts         # login() → POST /auth/login, register() → POST /auth/register; типы AuthUser, AuthResponse
+    │   │   ├── schema.ts      # zod-схемы форм loginSchema и registerSchema + типы LoginFormValues, RegisterFormValues
+    │   │   └── hooks.ts       # useLoginMutation (вход), useRegisterMutation (регистрация), useLogout (разлогин)
     │   ├── categories/
     │   │   ├── api.ts         # getCategories(), createCategory(), deleteCategory(), normalizeCategoryTitle(); тип Category (+transactionCount)
     │   │   ├── keys.ts        # Реестр query-ключей TanStack Query (categoryKeys)
@@ -66,6 +66,7 @@ budget-web/
         ├── CategoriesPage.tsx # Управление категориями: добавление, счётчик использования, удаление с undo
         ├── AccountsPage.tsx   # Управление счетами: добавление, пометка счёта по умолчанию, удаление с undo
         ├── LoginPage.tsx      # Страница входа (форма на react-hook-form + zod), вне Layout
+        ├── RegisterPage.tsx   # Страница регистрации (форма с подтверждением пароля), вне Layout
         └── SettingsPage.tsx   # Страница «Настройки»: ссылки на категории и счета + кнопка выхода
 ```
 
@@ -79,7 +80,7 @@ budget-web/
 #### `src/`
 
 - **`main.tsx`** — точка входа. Берёт `#root`, создаёт React-корень через `createRoot` и рендерит `<App />` внутри `<StrictMode>`, обёрнутый в `QueryClientProvider` (TanStack Query) с клиентом из `lib/queryClient.ts`. Импортирует глобальный `index.css`.
-- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` — отдельно; закрытая зона (`/`, `/transactions/:id`, `/settings`, `/categories`, `/accounts` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас). Здесь же монтируется глобальный `<Toaster />` (sonner) для всплывающих уведомлений.
+- **`App.tsx`** — `App`, корневой компонент (default export). Настраивает роутинг через `BrowserRouter` / `Routes` (react-router-dom): `/login` и `/register` — отдельно, вне гарда; закрытая зона (`/`, `/transactions/:id`, `/settings`, `/categories`, `/accounts` и фолбэк `*`) обёрнута в `ProtectedRoute` (гард доступа), внутри — `Layout` (визуальный каркас). Здесь же монтируется глобальный `<Toaster />` (sonner) для всплывающих уведомлений.
 - **`index.css`** — глобальные стили. `@import 'tailwindcss'` подключает Tailwind v4 (preflight-сброс). Дальше — тема shadcn/ui: CSS-переменные дизайн-токенов (`--background`, `--primary` и т.д.) в `:root` и `.dark`, маппинг токенов в Tailwind через `@theme inline`, шрифт Inter (`@fontsource-variable/inter`), `@layer base` для базовых стилей `body`/`html`.
 - **`vite-env.d.ts`** — декларации типов окружения Vite. Подключает `vite/client` и типизирует `import.meta.env.VITE_API_URL` (базовый URL `budget-api`).
 
@@ -93,9 +94,9 @@ budget-web/
 
 #### `src/features/auth/`
 
-- **`api.ts`** — `login(email, password)` (named export): `POST /auth/login` в budget-api, возвращает `{ accessToken, user }`. Типы `AuthUser`, `AuthResponse`. При неверных данных бэкенд отвечает 401.
-- **`schema.ts`** — `loginSchema` (zod) и выводимый из неё тип `LoginFormValues` (named exports). Клиентская валидация формы входа; поля синхронны с `LoginDto` бэкенда (email, password).
-- **`hooks.ts`** — `useLoginMutation` и `useLogout` (named exports). `useLoginMutation` — мутация TanStack Query: вызывает `login()`, при успехе сохраняет JWT (`setToken`) и уходит на `/`. `useLogout` — колбэк: чистит токен и уходит на `/login` (сетевого запроса нет, JWT stateless).
+- **`api.ts`** — `login(email, password)` и `register(email, password)` (named exports): `POST /auth/login` и `POST /auth/register` в budget-api, оба возвращают `{ accessToken, user }`. Типы `AuthUser`, `AuthResponse`. При неверных данных логин отвечает 401; регистрация — 403, если email не в белом списке бэкенда, и 409, если пользователь уже есть.
+- **`schema.ts`** — `loginSchema`, `registerSchema` (zod) и выводимые из них типы `LoginFormValues`, `RegisterFormValues` (named exports). Клиентская валидация форм; поля синхронны с DTO бэкенда (`registerSchema` требует пароль от 8 символов, как `@MinLength(8)` в `RegisterDto`). Поле `passwordConfirm` — только клиентское, сверяется через `refine` и на API не уходит.
+- **`hooks.ts`** — `useLoginMutation`, `useRegisterMutation` и `useLogout` (named exports). `useLoginMutation` — мутация TanStack Query: вызывает `login()`, при успехе сохраняет JWT (`setToken`) и уходит на `/`. `useRegisterMutation` — то же самое для `register()`: бэк сразу отдаёт токен, поэтому отдельный вход после регистрации не нужен. `useLogout` — колбэк: чистит токен и уходит на `/login` (сетевого запроса нет, JWT stateless).
 
 #### `src/features/accounts/`
 
@@ -146,7 +147,8 @@ budget-web/
 - **`HomePage.tsx`** — `HomePage` (default export). Главная страница: через `useTransactionsQuery` грузит транзакции, считает расходы за месяц (`monthlyExpenses`) и выводит ленту с форматированием даты/валюты (`formatDate`, `formatCurrency`). Через `useCategoriesQuery` сопоставляет `categoryId` транзакции с названием категории и показывает его рядом с датой. Каждая трата — `Link` на `/transactions/:id` (страница детали), где можно подтвердить категорию, отредактировать и удалить; у трат с активным `autoConfirmAt` в строке показывается некликабельный бейдж-подсказка «Уточнить категорию». В шапке ленты (только на десктопе, `hidden sm:flex`) — `VoiceRecorderButton` (голосовой ввод) и `AddTransactionDialog` (ручной ввод); на мобиле эти действия живут в `BottomNav`.
 - **`TransactionDetailPage.tsx`** — `TransactionDetailPage` (default export). Страница детали одной траты (маршрут `/transactions/:id`). Берёт `id` из `useParams`, грузит транзакцию через `useTransactionQuery` (404/невалидный id → «Транзакция не найдена»). Показывает: шапку с крупной суммой (знак/цвет по типу) и описанием; заметный блок подтверждения категории `CategoryConfirmPanel` (если активен `autoConfirmAt`); список подробностей (дата со временем через `formatDateTime`, категория из `useCategoriesQuery`, счёт из `useAccountsQuery` — строка рендерится только при `accountId != null`, тип, валюта). Действия: «Редактировать» — `AddTransactionDialog` в режиме правки (prop `transaction`); «Удалить» — через `useDeleteTransactionMutation` с подтверждением `window.confirm`, по успеху тост (sonner) и возврат на `/`.
 - **`CategoriesPage.tsx`** — `CategoriesPage` (default export, маршрут `/categories`). Экран управления категориями. Список грузит через `useCategoriesQuery`. Поле сверху + `useCreateCategoryMutation` добавляют категорию (чип появляется мгновенно благодаря optimistic-обновлению; дубликат не шлётся на бэк, а подсвечивает существующую строку). Каждая строка — название, бейдж со счётчиком `transactionCount` и крестик удаления. Удалять можно только пустые категории (у используемых крестик `disabled` с подсказкой — бэк всё равно ответит 409). Удаление с отменой: строка прячется локально, тост (sonner) с кнопкой «Отменить» висит 5с, и только по истечении окна вызывается `useDeleteCategoryMutation` (`DELETE`); уход со страницы во время окна отменяет удаление.
-- **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLoginMutation`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде.
+- **`LoginPage.tsx`** — `LoginPage` (default export). Страница входа вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `loginSchema`); вход через хук `useLoginMutation`. Показывает ошибки валидации полей и серверную ошибку при 401/недоступном бэкенде. Внизу — ссылка на `/register`.
+- **`RegisterPage.tsx`** — `RegisterPage` (default export). Страница регистрации вне `Layout`. Форма на `react-hook-form` + `zodResolver` (валидация по `registerSchema`): email, пароль и подтверждение пароля; отправка через `useRegisterMutation`, после успеха пользователь сразу залогинен и попадает на `/`. Серверные ошибки разбираются по статусу: 403 — «Регистрация закрыта: этот email не в списке приглашённых», 409 — email занят, прочее — бэкенд недоступен. Внизу — ссылка на `/login`.
 - **`AccountsPage.tsx`** — `AccountsPage` (default export, маршрут `/accounts`). Экран управления счетами. Список грузит через `useAccountsQuery`. Поле сверху + `useCreateAccountMutation` добавляют счёт (строка появляется мгновенно благодаря optimistic-обновлению; дубликат не шлётся на бэк, а подсвечивает существующую строку). Каждая строка — название, чип «по умолчанию» у дефолтного, бейдж со счётчиком `transactionCount`, кнопка-звёздочка «сделать счётом по умолчанию» (у недефолтных, через `useSetDefaultAccountMutation`) и крестик удаления. В отличие от категорий удалять можно любой счёт, включая непустой и дефолтный: удаление с отменой (строка прячется локально, тост sonner с «Отменить» на 2с, в тексте — сколько транзакций останется без счёта; по истечении окна вызывается `useDeleteAccountMutation`). Экран доступен и при нуле счетов — иначе первый негде завести.
 - **`SettingsPage.tsx`** — `SettingsPage` (default export). Страница «Настройки»: блок «Оформление» с сегментированным переключателем темы (Светлая / Тёмная / Системная) через `useTheme`; список настроек со ссылками на `/categories` (управление категориями) и `/accounts` (управление счетами); кнопка «Выйти из аккаунта» (через `useLogout`). Выход перенесён сюда из шапки `Layout` — на мобиле в шапке навигации нет.
 
@@ -164,4 +166,5 @@ budget-web/
 | `/categories` | `CategoriesPage` | Управление категориями: добавление, счётчик, удаление с undo (внутри Layout, требует авторизации) | `src/pages/CategoriesPage.tsx` | готово |
 | `/accounts` | `AccountsPage`     | Управление счетами: добавление, счёт по умолчанию, удаление с undo (внутри Layout, требует авторизации) | `src/pages/AccountsPage.tsx` | готово |
 | `/login`    | `LoginPage`        | Вход, отдельно от Layout (без навигации)        | `src/pages/LoginPage.tsx`  | готово   |
+| `/register` | `RegisterPage`     | Регистрация по приглашению: бэк принимает только email из своего белого списка. Отдельно от Layout | `src/pages/RegisterPage.tsx` | готово |
 | `*`         | `HomePage`         | Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную (без токена — на `/login`) | `src/App.tsx`              | готово   |
