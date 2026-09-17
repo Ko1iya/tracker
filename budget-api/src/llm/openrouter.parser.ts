@@ -13,7 +13,7 @@ import {
   TransactionParser,
 } from './transaction-parser';
 
-const SYSTEM_INSTRUCTION = `Ты — парсер личных трат и доходов. На вход даётся текст на русском и список названий категорий пользователя. Верни СТРОГО JSON-объект и ничего больше (без markdown, без \`\`\`).
+const SYSTEM_INSTRUCTION = `Ты — парсер личных трат и доходов. На вход даётся текст на русском, список названий категорий и список названий счетов пользователя. Верни СТРОГО JSON-объект и ничего больше (без markdown, без \`\`\`).
 
 Форма JSON:
 {
@@ -22,12 +22,14 @@ const SYSTEM_INSTRUCTION = `Ты — парсер личных трат и до�
   "description": краткое описание траты (1–3 слова, с заглавной буквы),
   "type": "EXPENSE" для трат, "INCOME" для поступлений (зарплата, доход, премия, аванс и т.п.),
   "category": СТРОГО одно название из списка категорий пользователя, если оно ТЕМАТИЧЕСКИ подходит трате, иначе null,
-  "suggestedCategories": массив строк
+  "suggestedCategories": массив строк,
+  "account": СТРОГО одно название из списка счетов пользователя, если оно названо в тексте, иначе null
 }
 
 Правила:
 - НЕ выбирай обобщённые категории-«корзины» ("Прочее", "Разное", "Другое", "Остальное" и т.п.) как совпадение, если трата явно тематическая (есть конкретный предмет/услуга). В таком случае ставь category = null и предложи конкретную категорию в suggestedCategories.
-- suggestedCategories: если category === null, предложи 1–3 коротких НОВЫХ названия категории под эту трату (по-русски, с заглавной буквы). Если category заполнена — пустой массив.`;
+- suggestedCategories: если category === null, предложи 1–3 коротких НОВЫХ названия категории под эту трату (по-русски, с заглавной буквы). Если category заполнена — пустой массив.
+- account: НЕ выдумывай названия счетов. Бери значение только из переданного списка счетов; если ни один не назван в тексте или список пуст — null.`;
 
 /**
  * Боевой парсер на OpenRouter (модель из OPENROUTER_MODEL). Ходит в OpenRouter
@@ -58,6 +60,7 @@ export class OpenRouterTransactionParser extends TransactionParser {
   async parse(
     text: string,
     categoryTitles: string[],
+    accountTitles: string[],
   ): Promise<ParsedTransaction> {
     if (!this.client) {
       this.logger.error('OPENROUTER_API_KEY не задан в окружении');
@@ -69,7 +72,10 @@ export class OpenRouterTransactionParser extends TransactionParser {
     const categoriesLine = categoryTitles.length
       ? categoryTitles.join(', ')
       : '(нет категорий)';
-    const prompt = `Категории пользователя: ${categoriesLine}\nТекст траты: "${text}"`;
+    const accountsLine = accountTitles.length
+      ? accountTitles.join(', ')
+      : '(нет счетов)';
+    const prompt = `Категории пользователя: ${categoriesLine}\nСчета пользователя: ${accountsLine}\nТекст траты: "${text}"`;
 
     let raw: string | null | undefined;
     try {
@@ -117,6 +123,10 @@ export class OpenRouterTransactionParser extends TransactionParser {
       typeof data.category === 'string' && data.category.length > 0
         ? data.category
         : null;
+    const account =
+      typeof data.account === 'string' && data.account.length > 0
+        ? data.account
+        : null;
 
     return {
       amount: Number(data.amount) || 0,
@@ -127,6 +137,7 @@ export class OpenRouterTransactionParser extends TransactionParser {
       suggestedCategories: Array.isArray(data.suggestedCategories)
         ? data.suggestedCategories
         : [],
+      account,
       raw,
     };
   }

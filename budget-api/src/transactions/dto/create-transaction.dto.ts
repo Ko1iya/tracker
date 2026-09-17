@@ -25,4 +25,9 @@ export class CreateTransactionDto {
   @IsInt()
   @IsPositive()
   categoryId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  accountId?: number;
 }

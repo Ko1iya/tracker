@@ -40,6 +40,16 @@ export class TransactionsService {
     if (dto.categoryId !== undefined) {
       await this.assertCategoryOwned(userId, dto.categoryId);
     }
+    if (dto.accountId !== undefined) {
+      await this.assertAccountOwned(userId, dto.accountId);
+    }
+
+    // Счёт не пришёл с фронта — подставляем дефолтный. Именно здесь, а не при
+    // отображении: так смена дефолта не переписывает историю задним числом.
+    // Счетов у пользователя нет — транзакция остаётся без счёта.
+    const accountId =
+      dto.accountId ?? (await this.findDefaultAccountId(userId));
+
     return this.prisma.transaction.create({
       data: {
         amount: dto.amount,
@@ -48,6 +58,9 @@ export class TransactionsService {
         user: { connect: { id: userId } },
         ...(dto.categoryId !== undefined && {
           category: { connect: { id: dto.categoryId } },
+        }),
+        ...(accountId !== null && {
+          account: { connect: { id: accountId } },
         }),
       },
     });
@@ -78,6 +91,9 @@ export class TransactionsService {
   async update(userId: number, id: number, dto: UpdateTransactionDto) {
     if (dto.categoryId !== undefined) {
       await this.assertCategoryOwned(userId, dto.categoryId);
+    }
+    if (dto.accountId !== undefined) {
+      await this.assertAccountOwned(userId, dto.accountId);
     }
     const result = await this.prisma.transaction.updateMany({
       where: { id, userId },
@@ -129,7 +145,14 @@ export class TransactionsService {
       select: { id: true, title: true },
     });
     const categoryTitles = categories.map((c) => c.title);
-    const parsed = await this.parser.parse(text, categoryTitles);
+
+    const accounts = await this.prisma.account.findMany({
+      where: { userId },
+      select: { id: true, title: true, isDefault: true },
+    });
+    const accountTitles = accounts.map((a) => a.title);
+
+    const parsed = await this.parser.parse(text, categoryTitles, accountTitles);
 
     // Отладка голосового ввода (включается флагом DEBUG_VOICE). Помогает понять,
     // почему выбрана та или иная категория: видны транскрипт, какие категории
@@ -137,7 +160,7 @@ export class TransactionsService {
     const debugEnabled = this.config.get<string>('DEBUG_VOICE') === 'true';
     if (debugEnabled) {
       this.logger.debug(
-        `voice | transcript="${text}" | categories=[${categoryTitles.join(', ')}] | llmRaw=${parsed.raw ?? '(нет)'}`,
+        `voice | transcript="${text}" | categories=[${categoryTitles.join(', ')}] | accounts=[${accountTitles.join(', ')}] | llmRaw=${parsed.raw ?? '(нет)'}`,
       );
     }
 
@@ -156,6 +179,17 @@ export class TransactionsService {
             (c) => c.title.toLowerCase() === parsed.category!.toLowerCase(),
           );
 
+    // Счёт из речи сопоставляем без учёта регистра, как и категорию. Не назван
+    // или не совпал — подставляем дефолтный. Новые счета голосом не создаём.
+    const matchedAccount =
+      parsed.account === null
+        ? undefined
+        : accounts.find(
+            (a) => a.title.toLowerCase() === parsed.account!.toLowerCase(),
+          );
+    const accountId =
+      matchedAccount?.id ?? accounts.find((a) => a.isDefault)?.id ?? null;
+
     const transaction = await this.prisma.transaction.create({
       data: {
         amount: parsed.amount,
@@ -163,6 +197,7 @@ export class TransactionsService {
         description: parsed.description,
         type: parsed.type,
         user: { connect: { id: userId } },
+        ...(accountId !== null && { account: { connect: { id: accountId } } }),
         ...(matched
           ? { category: { connect: { id: matched.id } } }
           : {
@@ -179,6 +214,7 @@ export class TransactionsService {
         _debug: {
           transcript: text,
           categories: categoryTitles,
+          accounts: accountTitles,
           llmRaw: parsed.raw ?? null,
         },
       };
@@ -315,5 +351,23 @@ export class TransactionsService {
     if (!category) {
       throw new NotFoundException(`Category with id ${categoryId} not found`);
     }
+  }
+
+  private async assertAccountOwned(userId: number, accountId: number) {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, userId },
+    });
+    if (!account) {
+      throw new NotFoundException(`Account with id ${accountId} not found`);
+    }
+  }
+
+  /** id дефолтного счёта пользователя или null, если счетов нет. */
+  private async findDefaultAccountId(userId: number): Promise<number | null> {
+    const account = await this.prisma.account.findFirst({
+      where: { userId, isDefault: true },
+      select: { id: true },
+    });
+    return account?.id ?? null;
   }
 }

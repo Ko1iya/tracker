@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useAccounts } from "@/features/accounts/hooks"
 import { useCategories, useCreateCategory } from "@/features/categories/hooks"
 import { normalizeCategoryTitle } from "@/features/categories/api"
 import type { Category } from "@/features/categories/api"
@@ -52,6 +53,7 @@ function AddTransactionDialog({
   const updateTx = useUpdateTransaction()
   const createCat = useCreateCategory()
   const { data: categories } = useCategories()
+  const { data: accounts } = useAccounts()
   const { data: transactions } = useTransactions()
 
   const allCategories: Category[] = useMemo(
@@ -98,11 +100,13 @@ function AddTransactionDialog({
       type: "EXPENSE",
       categoryId: "",
       categoryInput: "",
+      accountId: "",
     },
   })
 
   const categoryId = watch("categoryId")
   const categoryInput = watch("categoryInput")
+  const accountId = watch("accountId")
 
   // В режиме правки при открытии заполняем форму значениями транзакции.
   // Категорию ставим радиовыбором (её id уже гарантированно есть среди чипсов).
@@ -115,9 +119,15 @@ function AddTransactionDialog({
         categoryId:
           transaction.categoryId != null ? String(transaction.categoryId) : "",
         categoryInput: "",
+        // Счёт транзакции, а если его сняли (счёт удалили) — дефолтный.
+        accountId: String(
+          transaction.accountId ??
+            accounts?.find((a) => a.isDefault)?.id ??
+            "",
+        ),
       })
     }
-  }, [open, transaction, reset])
+  }, [open, transaction, accounts, reset])
 
   // Создание: предвыбор самой частой категории при открытии (если ничего не
   // выбрано). В режиме правки не вмешиваемся — там значения ставит эффект выше.
@@ -132,6 +142,15 @@ function AddTransactionDialog({
       setValue("categoryId", String(frequent[0].id))
     }
   }, [isEdit, open, categoryId, categoryInput, frequent, setValue])
+
+  // Создание: предвыбираем дефолтный счёт при открытии. Счетов нет — поле
+  // вообще не рендерится, и в payload accountId не уедет.
+  useEffect(() => {
+    if (!isEdit && open && accountId === "") {
+      const fallback = accounts?.find((a) => a.isDefault) ?? accounts?.[0]
+      if (fallback) setValue("accountId", String(fallback.id))
+    }
+  }, [isEdit, open, accountId, accounts, setValue])
 
   // Определяем categoryId для запроса: ручной ввод приоритетнее радиокнопки.
   const resolveCategoryId = async (): Promise<number | undefined> => {
@@ -155,6 +174,8 @@ function AddTransactionDialog({
       // пустое описание → undefined (в БД null)
       description: values.description?.trim() || undefined,
       categoryId: resolvedCategoryId,
+      // Пустая строка (счетов нет) — поле не отправляем вовсе.
+      accountId: values.accountId ? Number(values.accountId) : undefined,
     }
     if (transaction) {
       await updateTx.mutateAsync({ id: transaction.id, input: payload })
@@ -266,6 +287,31 @@ function AddTransactionDialog({
               error={errors.categoryInput?.message}
             />
           </div>
+
+          {/* Счёт — только если у пользователя есть хотя бы один */}
+          {accounts && accounts.length > 0 && (
+            <div className='flex flex-col gap-1.5'>
+              <Label>Счёт</Label>
+              <Controller
+                control={control}
+                name='accountId'
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className='w-full'>
+                      <SelectValue placeholder='Выберите счёт' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((account) => (
+                        <SelectItem key={account.id} value={String(account.id)}>
+                          {account.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+          )}
 
           {(createTx.isError || updateTx.isError || createCat.isError) && (
             <p className='text-sm text-destructive'>

@@ -1,6 +1,6 @@
 /**
  * Абстракция парсера голосовых трат. LLM (или заглушка) получает
- * распознанный текст и список названий категорий пользователя, а возвращает
+ * распознанный текст, список названий категорий и счетов пользователя, а возвращает
  * структурированный черновик транзакции.
  *
  * Это абстрактный класс, а не interface, намеренно: в NestJS абстрактный
@@ -26,6 +26,8 @@ export interface ParsedTransaction {
   category: string | null;
   /** Варианты для создания новой категории, если `category` === null. `[0]` — приоритетный. */
   suggestedCategories: string[];
+  /** Точное название счёта из списка пользователя или null. Новые счета голосом не создаём. */
+  account: string | null;
   /** Сырой ответ провайдера до нормализации — только для отладки (DEBUG_VOICE). */
   raw?: string;
 }
@@ -34,9 +36,11 @@ export abstract class TransactionParser {
   /**
    * @param text          распознанный текст траты, напр. "300 рублей кофе"
    * @param categoryTitles названия существующих категорий пользователя
+   * @param accountTitles  названия существующих счетов пользователя
    */
   abstract parse(
     text: string,
     categoryTitles: string[],
+    accountTitles: string[],
   ): Promise<ParsedTransaction>;
 }

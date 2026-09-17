@@ -16,6 +16,7 @@ model User {
   createdAt DateTime @default(now())
 
   categories   Category[]
+  accounts     Account[]
   transactions Transaction[]
 }
 
@@ -24,6 +25,22 @@ model Category {
   title  String
   userId Int
   user   User   @relation(fields: [userId], references: [id])
+
+  transactions Transaction[]
+
+  @@unique([userId, title])
+}
+
+// Счёт — откуда потрачены деньги («Тинькофф», «Наличные»). Справочник
+// пользователя, как Category. Дефолтный счёт помечен флагом isDefault:
+// инвариант «ровно один дефолт на пользователя» держится кодом сервиса
+// (через prisma.$transaction), БД его не проверяет.
+model Account {
+  id        Int     @id @default(autoincrement())
+  title     String
+  isDefault Boolean @default(false)
+  userId    Int
+  user      User    @relation(fields: [userId], references: [id])
 
   transactions Transaction[]
 
@@ -40,6 +57,11 @@ model Transaction {
 
   categoryId  Int?
   category    Category? @relation(fields: [categoryId], references: [id])
+
+  // onDelete: SetNull — при удалении счёта Postgres сам обнуляет accountId
+  // у его транзакций, вручную updateMany не пишем. Транзакции при этом живы.
+  accountId   Int?
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
  
   suggestedCategories String[]  @default([])

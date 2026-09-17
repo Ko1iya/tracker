@@ -12,6 +12,7 @@ export interface Transaction {
   description: string | null
   type: TransactionType
   categoryId: number | null
+  accountId: number | null
   userId: number
   suggestedCategories: string[]
   autoConfirmAt: string | null
@@ -38,6 +39,7 @@ export interface CreateTransactionInput {
   type: TransactionType
   description?: string
   categoryId?: number
+  accountId?: number
 }
 
 // POST /transactions — создаёт транзакцию у текущего пользователя (требует JWT).

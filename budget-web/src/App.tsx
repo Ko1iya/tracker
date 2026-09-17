@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
 import Layout from "./components/Layout"
 import ProtectedRoute from "./components/ProtectedRoute"
+import AccountsPage from "./pages/AccountsPage"
 import CategoriesPage from "./pages/CategoriesPage"
 import HomePage from "./pages/HomePage"
 import LoginPage from "./pages/LoginPage"
@@ -24,6 +25,7 @@ function App() {
             />
             <Route path='/settings' element={<SettingsPage />} />
             <Route path='/categories' element={<CategoriesPage />} />
+            <Route path='/accounts' element={<AccountsPage />} />
             {/* Фолбэк внутри закрытой зоны: неизвестный путь ведёт на главную */}
             <Route path='*' element={<HomePage />} />
           </Route>

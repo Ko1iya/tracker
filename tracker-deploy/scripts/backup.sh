@@ -113,7 +113,7 @@ upload "$DUMP_FILE" db
 # руками, не дожидаясь воскресенья и не правя условие временно через sed.
 if [ "$(date +%u)" = "7" ] || [ "${FORCE_SECRETS:-0}" = "1" ]; then
   SECRETS_FILE="$BACKUP_DIR/tracker-secrets-$(date +%F).tar.gz"
-  log "Воскресенье: архивирую секреты в $SECRETS_FILE"
+  log "Архивирую секреты в $SECRETS_FILE"
   tar -czf "$SECRETS_FILE" -C "$DEPLOY_DIR" .env.prod certbot/conf
   chmod 600 "$SECRETS_FILE"
   upload "$SECRETS_FILE" secrets

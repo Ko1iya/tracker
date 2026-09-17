@@ -9,6 +9,7 @@ import {
 } from "@/features/transactions/hooks"
 import AddTransactionDialog from "@/features/transactions/AddTransactionDialog"
 import CategoryConfirmPanel from "@/features/transactions/CategoryConfirmPanel"
+import { useAccounts } from "@/features/accounts/hooks"
 import { useCategories } from "@/features/categories/hooks"
 import { formatCurrency, formatDateTime } from "@/lib/format"
 
@@ -19,6 +20,7 @@ function TransactionDetailPage() {
 
   const { data: tx, isLoading, isError } = useTransaction(txId)
   const { data: categories } = useCategories()
+  const { data: accounts } = useAccounts()
   const del = useDeleteTransaction()
 
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -55,6 +57,13 @@ function TransactionDetailPage() {
   const categoryTitle =
     tx.categoryId != null
       ? (categories?.find((c) => c.id === tx.categoryId)?.title ?? null)
+      : null
+
+  // Счёт показываем только если он реально проставлен: null — это «счёт не
+  // известен», подставлять дефолт при отображении нельзя (будет догадка).
+  const accountTitle =
+    tx.accountId != null
+      ? (accounts?.find((a) => a.id === tx.accountId)?.title ?? null)
       : null
 
   const isIncome = tx.type === "INCOME"
@@ -112,6 +121,12 @@ function TransactionDetailPage() {
             )}
           </dd>
         </div>
+        {accountTitle && (
+          <div className='flex items-center justify-between gap-4 px-4 py-3'>
+            <dt className='text-sm text-muted-foreground'>Счёт</dt>
+            <dd className='text-sm'>{accountTitle}</dd>
+          </div>
+        )}
         <div className='flex items-center justify-between gap-4 px-4 py-3'>
           <dt className='text-sm text-muted-foreground'>Тип</dt>
           <dd className='text-sm'>{isIncome ? "Доход" : "Расход"}</dd>

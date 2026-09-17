@@ -14,6 +14,9 @@ export const createTransactionSchema = z
     type: z.enum(["INCOME", "EXPENSE"]),
     categoryId: z.string(),
     categoryInput: z.string().max(50, "Не длиннее 50 символов"),
+    // id счёта строкой — таким его отдаёт Radix Select. Пустая строка означает
+    // «счетов у пользователя нет», поле в этом случае не рендерится.
+    accountId: z.string(),
   })
   .superRefine((values, ctx) => {
     if (values.categoryId === "" && !values.categoryInput.trim()) {

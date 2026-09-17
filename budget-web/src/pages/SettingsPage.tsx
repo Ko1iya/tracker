@@ -1,5 +1,13 @@
 import { Link } from "react-router-dom"
-import { ChevronRight, LogOut, Monitor, Moon, Sun, Tags } from "lucide-react"
+import {
+  ChevronRight,
+  LogOut,
+  Monitor,
+  Moon,
+  Sun,
+  Tags,
+  Wallet,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLogout } from "@/features/auth/hooks"
 import { useTheme } from "@/features/theme/useTheme"
@@ -50,7 +58,7 @@ function SettingsPage() {
         </div>
       </div>
 
-      {/* Список настроек: пока единственный пункт — управление категориями */}
+      {/* Список настроек: управление справочниками */}
       <ul className='flex flex-col divide-y rounded-xl border bg-card shadow-sm'>
         <li>
           <Link
@@ -60,6 +68,18 @@ function SettingsPage() {
             <span className='flex items-center gap-2 text-sm'>
               <Tags className='h-4 w-4 text-muted-foreground' />
               Категории
+            </span>
+            <ChevronRight className='h-4 w-4 text-muted-foreground' />
+          </Link>
+        </li>
+        <li>
+          <Link
+            to='/accounts'
+            className='flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent'
+          >
+            <span className='flex items-center gap-2 text-sm'>
+              <Wallet className='h-4 w-4 text-muted-foreground' />
+              Счета
             </span>
             <ChevronRight className='h-4 w-4 text-muted-foreground' />
           </Link>
